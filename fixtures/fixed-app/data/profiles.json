@@ -1,0 +1,70 @@
+{
+  "accounts": {
+    "s1": {
+      "lastEventCreated": 1788120404,
+      "billingEntitled": true
+    },
+    "s2": {
+      "lastEventCreated": 1788120414,
+      "billingEntitled": true
+    },
+    "s3": {
+      "lastEventCreated": 1788120414,
+      "billingEntitled": true
+    },
+    "s4": {
+      "lastEventCreated": 1788120434,
+      "billingEntitled": false
+    },
+    "s5": {
+      "lastEventCreated": 1788120424,
+      "billingEntitled": false
+    },
+    "s6": {
+      "lastEventCreated": 1788120414,
+      "billingEntitled": false
+    },
+    "s7": {
+      "lastEventCreated": 1788120424,
+      "billingEntitled": true
+    },
+    "s8": {
+      "lastEventCreated": 1788120414,
+      "billingEntitled": false
+    },
+    "s9": {
+      "lastEventCreated": 1788120414,
+      "billingEntitled": false
+    },
+    "s10": {
+      "lastEventCreated": 1788120424,
+      "billingEntitled": false
+    }
+  },
+  "seenEvents": [
+    "evt_akeso_1788120404085_25_7df5e84b",
+    "evt_akeso_1788120404085_26_eb0c1373",
+    "evt_akeso_1788120404085_27_494297e4",
+    "evt_akeso_1788120404085_28_ae28b1ec",
+    "evt_akeso_1788120404085_29_90ffc07f",
+    "evt_akeso_1788120404085_30_b98d027e",
+    "evt_akeso_1788120404085_31_0ab37f9c",
+    "evt_akeso_1788120404085_32_7d16bcd2",
+    "evt_akeso_1788120404085_33_eae08218",
+    "evt_akeso_1788120404085_34_01b69457",
+    "evt_akeso_1788120404085_35_a265bcf9",
+    "evt_akeso_1788120404085_36_ed4886ac",
+    "evt_akeso_1788120404085_37_ec01b54f",
+    "evt_akeso_1788120404085_38_2ad36386",
+    "evt_akeso_1788120404085_39_33c998f3",
+    "evt_akeso_1788120404085_40_4956e718",
+    "evt_akeso_1788120404085_41_48639afe",
+    "evt_akeso_1788120404085_42_d5070c4b",
+    "evt_akeso_1788120404085_43_a73e5fd8",
+    "evt_akeso_1788120404085_45_baf7ece0",
+    "evt_akeso_1788120404085_44_b1a9634a",
+    "evt_akeso_1788120404085_46_c0107f8a",
+    "evt_akeso_1788120404085_47_37d55f37",
+    "evt_akeso_1788120404085_48_ed0a201c"
+  ]
+}
