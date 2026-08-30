@@ -95,7 +95,10 @@ async function deliverAll(events, { webhookUrl, webhookSecret, alreadyDelivered 
 }
 
 async function probe(probeUrl, account) {
-  const response = await fetch(`${probeUrl}?account=${encodeURIComponent(account)}`);
+  /* A probe deployed on a public app carries a guard token in its URL, so the
+     account parameter joins with & when a query already exists. */
+  const joiner = probeUrl.includes("?") ? "&" : "?";
+  const response = await fetch(`${probeUrl}${joiner}account=${encodeURIComponent(account)}`);
   const body = await response.json();
   return Boolean(body.billingEntitled);
 }
