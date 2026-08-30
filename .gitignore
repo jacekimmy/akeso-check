@@ -3,3 +3,4 @@
 node_modules/
 akeso-report.html
 *.local.html
+fixtures/*/data/profiles.json
