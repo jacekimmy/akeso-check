@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import path from "node:path";
+import { writeFile } from "node:fs/promises";
 import { detect } from "../src/detect.mjs";
+import { runLifecycle } from "../src/lifecycle.mjs";
+import { renderReport } from "../src/report.mjs";
 
 /* Stage one of the Check: understand the project, say what is possible, and be
    honest about what is not. The lifecycle pass and the report build on this. */
@@ -9,8 +12,36 @@ const root = path.resolve(process.argv[2] || process.cwd());
 
 const detection = await detect(root);
 
+/* --lifecycle-url: the app is already running there; deliver the scenarios and
+   grade. The webhook secret comes from the project's own env, read locally. */
+let lifecycle = null;
+const urlFlag = process.argv.indexOf("--lifecycle-url");
+if (urlFlag !== -1) {
+  const base = process.argv[urlFlag + 1].replace(/\/$/, "");
+  const webhookPath = detection.webhookHandlers[0]
+    ? "/" + detection.webhookHandlers[0].file.replace(/^app/, "api").replace(/\/route\.(ts|js|mjs|tsx)$/, "").replace(/^api\/api/, "api")
+    : "/api/stripe/webhook";
+  const envSecret = process.env.STRIPE_WEBHOOK_SECRET || null;
+  lifecycle = await runLifecycle({
+    webhookUrl: `${base}${webhookPath.startsWith("/api") ? webhookPath : "/api/stripe/webhook"}`,
+    probeUrl: `${base}/__akeso_probe`,
+    webhookSecret: envSecret || "whsec_fixturefixturefixture5678",
+  });
+}
+
+const htmlFlag = process.argv.indexOf("--html");
+if (htmlFlag !== -1) {
+  const out = process.argv[htmlFlag + 1] || "akeso-report.html";
+  await writeFile(out, renderReport({ detection, lifecycle }));
+  console.log(`report written: ${out}`);
+  if (process.argv.includes("--open")) {
+    const { spawn } = await import("node:child_process");
+    spawn(process.platform === "darwin" ? "open" : "xdg-open", [out], { stdio: "ignore", detached: true });
+  }
+}
+
 if (process.argv.includes("--json")) {
-  console.log(JSON.stringify(detection, null, 2));
+  console.log(JSON.stringify({ detection, lifecycle }, null, 2));
   process.exit(0);
 }
 
