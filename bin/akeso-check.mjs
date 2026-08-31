@@ -63,10 +63,13 @@ if (base) {
     console.error("key (sk_test_...) and run it again.\n");
     process.exit(1);
   }
-  const webhookPath = detection.webhookHandlers[0]
-    ? "/" + detection.webhookHandlers[0].file.replace(/^app/, "api").replace(/\/route\.(ts|js|mjs|tsx)$/, "").replace(/^api\/api/, "api")
-    : "/api/stripe/webhook";
-  const webhookUrl = `${base}${webhookPath.startsWith("/api") ? webhookPath : "/api/stripe/webhook"}`;
+  const edgeFunction = detection.webhookHandlers[0]?.file.match(/^supabase\/functions\/([^/]+)\//)?.[1];
+  const webhookPath = edgeFunction
+    ? `/functions/v1/${edgeFunction}`
+    : detection.webhookHandlers[0]
+      ? "/" + detection.webhookHandlers[0].file.replace(/^app/, "api").replace(/\/route\.(ts|js|mjs|tsx)$/, "").replace(/^api\/api/, "api")
+      : "/api/stripe/webhook";
+  const webhookUrl = `${base}${webhookPath.startsWith("/api") || webhookPath.startsWith("/functions") ? webhookPath : "/api/stripe/webhook"}`;
 
   const secret = await projectWebhookSecret();
   if (!secret) {
@@ -174,8 +177,14 @@ if (!args.includes("--no-open")) {
 }
 
 if (!lifecycle && !probeNote) {
-  console.log(`\nNext, the real test (a pretend customer pays, cancels, gets refunded):`);
-  console.log(`  1. start your dev server (usually: npm run dev)`);
-  console.log(`  2. npx akeso-check --lifecycle-url http://localhost:3000`);
+  if (detection.webhookHandlers[0]?.file.startsWith("supabase/functions/")) {
+    console.log(`\nThis app's webhook is a Supabase Edge Function. The full pretend-customer`);
+    console.log(`test for that shape is not supported yet; the report above covers`);
+    console.log(`everything that can be read from the code.`);
+  } else {
+    console.log(`\nNext, the real test (a pretend customer pays, cancels, gets refunded):`);
+    console.log(`  1. start your dev server (usually: npm run dev)`);
+    console.log(`  2. npx akeso-check --lifecycle-url http://localhost:3000`);
+  }
 }
 console.log();

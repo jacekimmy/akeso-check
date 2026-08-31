@@ -186,9 +186,9 @@ async function findWebhookHandler(root, sourceFiles) {
    the report (and eventually the founder) confirm. A ranked shortlist that is
    honest about confidence beats a confident wrong answer. */
 const ACCESS_HINTS = [
-  { pattern: /\b(is_pro|isPro|is_premium|isPremium|is_paid|isPaid|has_access|hasAccess|is_subscribed|isSubscribed)\b/, why: "boolean paid flag" },
+  { pattern: /\b(is_pro|isPro|is_premium|isPremium|is_paid|isPaid|has_access|hasAccess|is_subscribed|isSubscribed|subscribed)\b/, why: "boolean paid flag" },
   { pattern: /\b(plan|tier|subscription_status|subscriptionStatus|subscription_tier)\b\s*(===?|!==?|\.eq\(|:)/, why: "plan/status comparison" },
-  { pattern: /\.from\(["'`](subscriptions|entitlements|customers|profiles|users|accounts|billing)["'`]\)/, why: "reads a billing-ish table" },
+  { pattern: /\.from\(["'`](subscriptions|subscribers|entitlements|customers|profiles|users|accounts|billing)["'`]\)/, why: "reads a billing-ish table" },
   { pattern: /\bstatus\s*===?\s*["'`](active|trialing|past_due|canceled)["'`]/, why: "compares a Stripe status value" },
   { pattern: /getBillingEntitlement|billingEntitled/, why: "already has an entitlement function" },
 ];
@@ -201,7 +201,7 @@ async function findAccessDecisionSites(root, sourceFiles) {
     const relative = path.relative(root, file);
     const reasons = ACCESS_HINTS.filter((hint) => hint.pattern.test(content)).map((hint) => hint.why);
     if (!reasons.length) continue;
-    const clientSide = /["']use client["']/.test(content) || /components\//.test(relative);
+    const clientSide = /["']use client["']/.test(content) || /components\/|hooks\//.test(relative) || /from ["']react["']/.test(content);
     sites.push({
       file: relative,
       evidence: [...new Set(reasons)],
@@ -242,7 +242,10 @@ export async function detect(root) {
       lifecyclePass: stripe.lifecycleTestable && webhookHandlers.length > 0,
       liveSnapshot: stripe.liveKeyPresent || stripe.lifecycleTestable,
       blockers: [
-        !stripe.sdkInstalled && !stripe.secretKey ? "No Stripe SDK or key found — is this a Stripe-backed app?" : null,
+        /* A found webhook handler IS evidence of a Stripe app, even when the
+           SDK arrives by URL import (Deno edge functions) and keys live in the
+           platform, not in env files. */
+        !stripe.sdkInstalled && !stripe.secretKey && webhookHandlers.length === 0 ? "No Stripe SDK or key found. Is this a Stripe-backed app?" : null,
         stripe.liveKeyPresent && !stripe.lifecycleTestable ? "Only a LIVE Stripe key found. Lifecycle tests run only against test mode; add a test key." : null,
         webhookHandlers.length === 0 ? "No Stripe webhook handler found." : null,
         database.kind === "none-found" ? "No database connection found in env files." : null,
