@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Akeso Check — watch-this</title>
+<style>
+  :root { --bg:#fcfcfd; --ink:#16181d; --ink2:#5b6270; --ink3:#8a919e; --line:#e6e8ec;
+    --ok:#12784b; --warn:#96620a; --bad:#b3261e; --note:#2f4a78; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --ink:#e9ebef; --ink2:#a4abb8;
+    --ink3:#767d8a; --line:#282c34; --ok:#4cbe83; --warn:#dfa94c; --bad:#ef8578; --note:#8aa9dc; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 ui-sans-serif,-apple-system,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  .shell { max-width:640px; margin:0 auto; padding:40px 24px 100px; }
+  .local { font-size:12.5px; color:var(--ink3); border:1px solid var(--line); border-radius:20px; display:inline-block; padding:3px 12px; margin-bottom:34px; }
+  .gradeCard { border:1px solid var(--line); border-radius:10px; padding:30px 28px; display:flex; gap:26px; align-items:center; }
+  .gradeLetter { font-size:76px; font-weight:700; line-height:1; letter-spacing:-.04em; }
+  .g-A,.g-B { color:var(--ok); } .g-C { color:var(--warn); } .g-D,.g-F { color:var(--bad); } .g-\? { color:var(--ink3); }
+  .gradeCard h1 { margin:0 0 6px; font-size:22px; letter-spacing:-.02em; }
+  .gradeCard p { margin:0; color:var(--ink2); font-size:15px; }
+  .app { font-size:13px; color:var(--ink3); margin-top:10px; }
+  h2 { font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); margin:44px 0 4px; }
+  .rows { border-top:1px solid var(--line); }
+  .row { display:flex; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); align-items:baseline; font-size:15px; }
+  .mark { width:18px; text-align:center; flex:none; font-weight:600; }
+  .row.ok .mark { color:var(--ok); } .row.warn .mark { color:var(--warn); }
+  .row.bad .mark { color:var(--bad); } .row.bad .name { color:var(--bad); font-weight:600; }
+  .row.note .mark { color:var(--note); } .row.mute { color:var(--ink3); }
+  .name { flex:1; } .name.wide { flex:auto; }
+  .detail { color:var(--ink3); font-size:13.5px; text-align:right; max-width:40%; }
+  ul.limits { margin:8px 0 0; padding-left:20px; color:var(--ink2); font-size:14.5px; }
+  ul.limits li { margin-bottom:7px; }
+  .cta { margin-top:48px; border:1px solid var(--line); border-radius:10px; padding:22px 24px; }
+  .cta h3 { margin:0 0 6px; font-size:17px; } .cta p { margin:0 0 14px; color:var(--ink2); font-size:14.5px; }
+  .cta a { display:inline-block; background:var(--ink); color:var(--bg); text-decoration:none; border-radius:7px; padding:10px 18px; font-size:15px; font-weight:500; }
+  footer { margin-top:44px; font-size:12.5px; color:var(--ink3); }
+</style></head><body><div class="shell">
+  <div class="local">🔒 This report is a file on your computer. Nothing was sent anywhere.</div>
+  <div class="gradeCard">
+    <div class="gradeLetter g-A">A</div>
+    <div>
+      <h1>Your billing lifecycle holds up.</h1>
+      <p>Every lifecycle scenario passed.</p>
+      <div class="app">watch-this · next-app-router · supabase · Stripe test</div>
+    </div>
+  </div>
+
+  <h2>What a pretend customer went through</h2>
+  <div class="rows"><div class="row ok"><span class="mark">✓</span><span class="name">New payment unlocks access</span><span class="detail"></span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">Trial ends, subscription becomes active</span><span class="detail"></span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">Monthly renewal payment keeps access</span><span class="detail"></span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">Card fails, retries exhaust: access ends</span><span class="detail"></span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">Customer cancels; period ends: access ends</span><span class="detail"></span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">Immediate cancellation removes access</span><span class="detail"></span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">Customer un-cancels before the period ends</span><span class="detail"></span></div>
+<div class="row note"><span class="mark">•</span><span class="name">Latest charge refunded (follows the app's own policy)</span><span class="detail">app's policy: removes access</span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">The same event delivered twice</span><span class="detail"></span></div>
+<div class="row ok"><span class="mark">✓</span><span class="name">An old 'still active' event arrives after cancellation</span><span class="detail"></span></div></div>
+
+  <h2>What the code itself shows</h2>
+  <div class="rows"><div class="row ok"><span class="mark">✓</span><span class="name wide">Signature verified against the raw body, and all 7 lifecycle events are handled.</span></div></div>
+
+  <h2>What this did not check</h2>
+  <ul class="limits"><li>Only the billing lifecycle was tested — not login, checkout UI, or anything else.</li>
+<li>Events were delivered locally with your app's own webhook secret. If your handler re-fetches objects from Stripe's API, run the sandbox mode with your Stripe test key for full fidelity.</li></ul>
+
+  
+
+  <footer>Akeso Check · 2026-08-31 20:56 · 10 lifecycle scenarios · local run</footer>
+</div></body></html>
