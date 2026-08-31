@@ -39,7 +39,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   const scenarioRows = (lifecycle?.results || []).map((result) => {
     const mark = result.outcome === "pass" ? "✓"
       : result.outcome === "fail" ? "✗"
-      : result.outcome === "reported" ? "•" : "—";
+      : result.outcome === "reported" ? "•" : "?";
     const cls = result.outcome === "pass" ? "ok"
       : result.outcome === "fail" ? (result.critical ? "bad" : "warn")
       : result.outcome === "reported" ? "note" : "mute";
@@ -106,7 +106,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   </div>
 
   <h2>What a pretend customer went through</h2>
-  <div class="rows">${scenarioRows || '<div class="row mute"><span class="mark">—</span><span class="name">The lifecycle test did not run on this project.</span></div>'}</div>
+  <div class="rows">${scenarioRows || '<div class="row mute"><span class="mark">?</span><span class="name">The lifecycle test did not run on this project.</span></div>'}</div>
 
   <h2>What the code itself shows</h2>
   <div class="rows">${findingRows}</div>
@@ -117,7 +117,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   ${grade.letter === "A" ? "" : `<div class="cta">
     <h3>Want this fixed?</h3>
     <p>The Fix Plan is an automated repair, delivered as a pull request you or your coding agent apply. Re-run this Check to see it go green.</p>
-    <a href="https://akeso-check.vercel.app/#fix">Get the Fix Plan — $49</a>
+    <a href="https://akeso-check.vercel.app/#fix">Get the Fix Plan, $49</a>
   </div>`}
 
   <footer>Akeso Check · ${escapeHtml(generatedAt.toISOString().slice(0, 16).replace("T", " "))} · ${lifecycle ? `${lifecycle.scenarioCount} lifecycle scenarios` : "static analysis only"} · local run</footer>

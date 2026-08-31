@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Akeso Check — watch-this</title>
+<title>Akeso Check · watch-this</title>
 <style>
   :root { --bg:#fcfcfd; --ink:#16181d; --ink2:#5b6270; --ink3:#8a919e; --line:#e6e8ec;
     --ok:#12784b; --warn:#96620a; --bad:#b3261e; --note:#2f4a78; }
@@ -32,7 +32,7 @@
   .cta a { display:inline-block; background:var(--ink); color:var(--bg); text-decoration:none; border-radius:7px; padding:10px 18px; font-size:15px; font-weight:500; }
   footer { margin-top:44px; font-size:12.5px; color:var(--ink3); }
 </style></head><body><div class="shell">
-  <div class="local">🔒 This report is a file on your computer. Nothing was sent anywhere.</div>
+  <div class="local">This report is a file on your computer. Nothing was sent anywhere.</div>
   <div class="gradeCard">
     <div class="gradeLetter g-F">F</div>
     <div>
@@ -44,12 +44,12 @@
 
   <h2>What a pretend customer went through</h2>
   <div class="rows"><div class="row ok"><span class="mark">✓</span><span class="name">New payment unlocks access</span><span class="detail"></span></div>
-<div class="row mute"><span class="mark">—</span><span class="name">Trial ends, subscription becomes active</span><span class="detail">access was already on before this scenario ran (shared account) — a grant here cannot be proven</span></div>
-<div class="row mute"><span class="mark">—</span><span class="name">Monthly renewal payment keeps access</span><span class="detail">access was already on before this scenario ran (shared account) — a grant here cannot be proven</span></div>
+<div class="row mute"><span class="mark">?</span><span class="name">Trial ends, subscription becomes active</span><span class="detail">access was already on before this scenario ran (shared account), so a grant here cannot be proven</span></div>
+<div class="row mute"><span class="mark">?</span><span class="name">Monthly renewal payment keeps access</span><span class="detail">access was already on before this scenario ran (shared account), so a grant here cannot be proven</span></div>
 <div class="row warn"><span class="mark">✗</span><span class="name">Card fails, retries exhaust: access ends</span><span class="detail">expected no access, the app says access</span></div>
 <div class="row bad"><span class="mark">✗</span><span class="name">Customer cancels; period ends: access ends</span><span class="detail">expected no access, the app says access</span></div>
 <div class="row bad"><span class="mark">✗</span><span class="name">Immediate cancellation removes access</span><span class="detail">expected no access, the app says access</span></div>
-<div class="row mute"><span class="mark">—</span><span class="name">Customer un-cancels before the period ends</span><span class="detail">access was already on before this scenario ran (shared account) — a grant here cannot be proven</span></div>
+<div class="row mute"><span class="mark">?</span><span class="name">Customer un-cancels before the period ends</span><span class="detail">access was already on before this scenario ran (shared account), so a grant here cannot be proven</span></div>
 <div class="row note"><span class="mark">•</span><span class="name">Latest charge refunded (follows the app's own policy)</span><span class="detail">app's policy: keeps access</span></div>
 <div class="row warn"><span class="mark">✗</span><span class="name">The same event delivered twice</span><span class="detail">expected no access, the app says access</span></div>
 <div class="row warn"><span class="mark">✗</span><span class="name">An old 'still active' event arrives after cancellation</span><span class="detail">expected no access, the app says access</span></div></div>
@@ -58,13 +58,13 @@
   <div class="rows"><div class="row warn"><span class="mark">!</span><span class="name wide">The handler ignores 6 of the 7 lifecycle events: invoice.paid, invoice.payment_failed, customer.subscription.created, customer.subscription.updated, customer.subscription.deleted, charge.refunded.</span></div></div>
 
   <h2>What this did not check</h2>
-  <ul class="limits"><li>Only the billing lifecycle was tested — not login, checkout UI, or anything else.</li>
+  <ul class="limits"><li>Only the billing lifecycle was tested. Not login, checkout UI, or anything else.</li>
 <li>Events were delivered locally with your app's own webhook secret. If your handler re-fetches objects from Stripe's API, run the sandbox mode with your Stripe test key for full fidelity.</li></ul>
 
   <div class="cta">
     <h3>Want this fixed?</h3>
-    <p>The Fix Plan is an automated repair — signature verification, every lifecycle event handled, and a nightly self-check — delivered as a pull request you (or your coding agent) apply. Then re-run this Check and watch it go green.</p>
-    <a href="https://akeso.dev/fix">Get the Fix Plan — $49</a>
+    <p>The Fix Plan is an automated repair, delivered as a pull request you or your coding agent apply. Re-run this Check to see it go green.</p>
+    <a href="https://akeso-check.vercel.app/#fix">Get the Fix Plan, $49</a>
   </div>
 
   <footer>Akeso Check · 2026-08-31 20:38 · 10 lifecycle scenarios · local run</footer>

@@ -67,7 +67,7 @@ export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret, accoun
           id: scenario.id, name: scenario.name, expected: scenario.expect,
           observed: null, deliveries: [], outcome: "not_provable",
           critical: Boolean(scenario.critical), harnessError: null,
-          note: "access was already on before this scenario ran (shared account) — a grant here cannot be proven",
+          note: "access was already on before this scenario ran (shared account), so a grant here cannot be proven",
         });
         continue;
       }
