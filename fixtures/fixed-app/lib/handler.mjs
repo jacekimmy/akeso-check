@@ -9,7 +9,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DB = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "profiles.json");
-const WHSEC = (process.env.STRIPE_WEBHOOK_SECRET || "whsec_fixturefixturefixture5678").replace(/^whsec_/, "");
+/* The signing secret is the HMAC key verbatim, whsec_ prefix included —
+   exactly what stripe-node's constructEvent does. */
+const WHSEC = process.env.STRIPE_WEBHOOK_SECRET || "whsec_fixturefixturefixture5678";
 
 async function read() {
   try { return JSON.parse(await readFile(DB, "utf8")); } catch { return { accounts: {}, seenEvents: [] }; }
