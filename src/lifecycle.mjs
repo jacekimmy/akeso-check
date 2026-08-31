@@ -33,20 +33,47 @@ async function probe(probeUrl, account) {
   return body.billingEntitled;
 }
 
-export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret }) {
+export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret, accountFor, settleMs = 60 }) {
   const results = [];
 
-  for (const scenario of scenarios()) {
+  for (const scenario of scenarios({ accountFor })) {
+    /* When scenarios are mapped onto a real shared account (a deployed app
+       where rows for made-up accounts cannot exist), a grant scenario that
+       starts with access already granted would pass vacuously. Same doctrine
+       as the sandbox driver: not provable is not a pass. */
+    if (accountFor && scenario.expect === true) {
+      let before = null;
+      try { before = await probe(probeUrl, scenario.account); } catch { /* main probe below reports it */ }
+      if (before === true) {
+        results.push({
+          id: scenario.id, name: scenario.name, expected: scenario.expect,
+          observed: null, deliveries: [], outcome: "not_provable",
+          critical: Boolean(scenario.critical), harnessError: null,
+          note: "access was already on before this scenario ran (shared account) — a grant here cannot be proven",
+        });
+        continue;
+      }
+    }
+
     const deliveries = [];
     let harnessError = null;
     try {
       for (const event of scenario.events) {
         deliveries.push({ type: event.type, ...(await deliver(webhookUrl, event, webhookSecret)) });
-        /* Small gap so file-backed fixtures and debounced handlers settle. */
-        await new Promise((resolve) => setTimeout(resolve, 60));
+        /* Small gap so file-backed fixtures and debounced handlers settle;
+           deployed serverless apps need more room than local fixtures. */
+        await new Promise((resolve) => setTimeout(resolve, settleMs));
       }
     } catch (error) {
       harnessError = error?.message || String(error);
+    }
+
+    /* If the app rejected every event we sent, its state was never exercised
+       and the probe can only echo whatever was already true. That is not a
+       lifecycle result — for anyone. (Today's cause was our own signing bug;
+       an app-side verification bug shows up in the static findings instead.) */
+    if (!harnessError && deliveries.length && deliveries.every((d) => !d.ok)) {
+      harnessError = `every delivery was rejected (${deliveries.map((d) => d.status).join(", ")}) — the lifecycle was never exercised`;
     }
 
     let observed = null;
@@ -79,7 +106,7 @@ export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret }) {
    money every single day: canceled customers keeping access. */
 export function gradeOf(results) {
   const graded = results.filter((r) => r.outcome === "pass" || r.outcome === "fail");
-  const untestable = results.filter((r) => r.outcome === "could_not_test");
+  const untestable = results.filter((r) => r.outcome === "could_not_test" || r.outcome === "not_provable");
   if (graded.length === 0) return { letter: "?", reason: "Nothing could be tested — see the errors below. This is a problem with the run, not proof about the app." };
 
   const failures = graded.filter((r) => r.outcome === "fail");

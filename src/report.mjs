@@ -46,7 +46,8 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
     const detail = result.outcome === "fail"
       ? `expected ${result.expected ? "access" : "no access"}, the app says ${result.observed ? "access" : "no access"}`
       : result.outcome === "reported" ? `app's policy: ${result.observed ? "keeps access" : "removes access"}`
-      : result.outcome === "could_not_test" ? escapeHtml(result.harnessError) : "";
+      : result.outcome === "could_not_test" ? escapeHtml(result.harnessError)
+      : result.outcome === "not_provable" ? escapeHtml(result.note || "not provable on this run") : "";
     return `<div class="row ${cls}"><span class="mark">${mark}</span><span class="name">${escapeHtml(result.name)}</span><span class="detail">${detail}</span></div>`;
   }).join("\n");
 

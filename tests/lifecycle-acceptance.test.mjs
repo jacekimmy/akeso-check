@@ -44,6 +44,19 @@ test("the fixed app grades A — no alarms on a healthy app", async () => {
   assert.equal(outcome.grade.letter, "A", JSON.stringify(outcome.results.filter(r => r.outcome !== "pass"), null, 2));
 });
 
+test("shared real account: grants after the first are not provable, never vacuous passes", async () => {
+  /* Deployed apps have no rows for made-up accounts, so every scenario maps
+     onto one real account. On a grant-only broken app that account stays
+     entitled forever — later grant scenarios must refuse to claim a pass. */
+  const outcome = await withFixture("broken-app", 4103, (opts) =>
+    runLifecycle({ ...opts, accountFor: () => "shared-real-account" }));
+  assert.equal(outcome.grade.letter, "F");
+  assert.equal(outcome.results.find((r) => r.id === "checkout-grants").outcome, "pass");
+  assert.equal(outcome.results.find((r) => r.id === "trial-converts").outcome, "not_provable");
+  assert.equal(outcome.results.find((r) => r.id === "reactivation").outcome, "not_provable");
+  assert.equal(outcome.results.find((r) => r.id === "cancel-at-period-end").outcome, "fail");
+});
+
 test("a dead server is our failure, never the app's grade", async () => {
   const outcome = await runLifecycle({
     webhookUrl: "http://localhost:59999/api/stripe/webhook",
