@@ -171,7 +171,9 @@ for (const blocker of capabilities.blockers) console.log(`⚠ ${blocker}`);
 const out = flagValue("--html") || path.join(root, "akeso-report.html");
 await writeFile(out, renderReport({ detection, lifecycle }));
 console.log(`\nReport: ${out}`);
-if (!args.includes("--no-open")) {
+if (process.env.CODESPACES) {
+  console.log(`To view it: right-click ${path.basename(out)} in the file list on the left and choose Download, then open the downloaded file.`);
+} else if (!args.includes("--no-open")) {
   const { spawn } = await import("node:child_process");
   spawn(process.platform === "darwin" ? "open" : "xdg-open", [out], { stdio: "ignore", detached: true });
 }
