@@ -117,7 +117,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   ${grade.letter === "A" ? "" : `<div class="cta">
     <h3>Want this fixed?</h3>
     <p>The Fix Plan is an automated repair — signature verification, every lifecycle event handled, and a nightly self-check — delivered as a pull request you (or your coding agent) apply. Then re-run this Check and watch it go green.</p>
-    <a href="https://akeso.dev/fix">Get the Fix Plan — $49</a>
+    <a href="https://akeso-check.vercel.app/#fix">Get the Fix Plan — $49</a>
   </div>`}
 
   <footer>Akeso Check · ${escapeHtml(generatedAt.toISOString().slice(0, 16).replace("T", " "))} · ${lifecycle ? `${lifecycle.scenarioCount} lifecycle scenarios` : "static analysis only"} · local run</footer>
