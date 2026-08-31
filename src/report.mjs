@@ -44,8 +44,8 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
       : result.outcome === "fail" ? (result.critical ? "bad" : "warn")
       : result.outcome === "reported" ? "note" : "mute";
     const detail = result.outcome === "fail"
-      ? `expected ${result.expected ? "access" : "no access"}, the app says ${result.observed ? "access" : "no access"}`
-      : result.outcome === "reported" ? `app's policy: ${result.observed ? "keeps access" : "removes access"}`
+      ? (result.expected ? "access should have been granted, but your app says no" : "access should have ended, but your app still grants it")
+      : result.outcome === "reported" ? `your app's policy: ${result.observed ? "keeps access" : "removes access"}`
       : result.outcome === "could_not_test" ? escapeHtml(result.harnessError)
       : result.outcome === "not_provable" ? escapeHtml(result.note || "not provable on this run") : "";
     return `<div class="row ${cls}"><span class="mark">${mark}</span><span class="name">${escapeHtml(result.name)}</span><span class="detail">${detail}</span></div>`;
@@ -80,6 +80,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   .gradeCard p { margin:0; color:var(--ink2); font-size:15px; }
   .app { font-size:13px; color:var(--ink3); margin-top:10px; }
   h2 { font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); margin:44px 0 4px; }
+  .intro { margin:2px 0 12px; color:var(--ink2); font-size:14.5px; }
   .rows { border-top:1px solid var(--line); }
   .row { display:flex; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); align-items:baseline; font-size:15px; }
   .mark { width:18px; text-align:center; flex:none; font-weight:600; }
@@ -101,24 +102,25 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
     <div>
       <h1>${escapeHtml(GRADE_COPY[grade.letter] || grade.reason)}</h1>
       <p>${escapeHtml(grade.reason)}</p>
-      <div class="app">${escapeHtml(detection.framework?.packageName || detection.root)} · ${escapeHtml(detection.framework?.framework || "")} · ${escapeHtml(detection.database?.kind || "")} · Stripe ${escapeHtml(detection.stripe?.secretKey?.mode || "not found")}</div>
+      <div class="app">${escapeHtml([
+        detection.framework?.packageName || detection.root,
+        { "next-app-router": "a Next.js app", "next-pages": "a Next.js app", express: "an Express app", "supabase-edge": "a Supabase Edge app", "node-other": "a Node app" }[detection.framework?.framework] || null,
+        detection.database?.kind && detection.database.kind !== "none-found" ? `with ${detection.database.kind === "supabase" ? "Supabase" : detection.database.kind}` : null,
+        detection.stripe?.secretKey ? `Stripe ${detection.stripe.secretKey.mode.toLowerCase()} mode` : null,
+      ].filter(Boolean).join(", "))}</div>
     </div>
   </div>
 
-  <h2>What a pretend customer went through</h2>
+  <h2>What we tested</h2>
+  <p class="intro">Akeso acted out ten billing situations against your app: paying, canceling, a failing card, a refund. After each one it asked your app the same question: does this customer still have paid access?</p>
   <div class="rows">${scenarioRows || '<div class="row mute"><span class="mark">?</span><span class="name">The lifecycle test did not run on this project.</span></div>'}</div>
 
-  <h2>What the code itself shows</h2>
+  <h2>What your code shows</h2>
+  <p class="intro">Read from your webhook handler and access checks, before anything ran.</p>
   <div class="rows">${findingRows}</div>
 
   <h2>What this did not check</h2>
   <ul class="limits">${limits}</ul>
-
-  ${grade.letter === "A" ? "" : `<div class="cta">
-    <h3>Want this fixed?</h3>
-    <p>The Fix Plan is an automated repair, delivered as a pull request you or your coding agent apply. Re-run this Check to see it go green.</p>
-    <a href="https://akeso-check.vercel.app/#fix">Get the Fix Plan, $49</a>
-  </div>`}
 
   <footer>Akeso Check · ${escapeHtml(generatedAt.toISOString().slice(0, 16).replace("T", " "))} · ${lifecycle ? `${lifecycle.scenarioCount} lifecycle scenarios` : "static analysis only"} · local run</footer>
 </div></body></html>`;
