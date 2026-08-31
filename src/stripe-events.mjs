@@ -59,7 +59,7 @@ export function scenarios({ accountFor } = {}) {
      harness. Without it, defaults stand. */
   const acct = accountFor || ((id) => id);
   const t = Math.floor(Date.now() / 1000);
-  return [
+  const list = [
     {
       id: "checkout-grants",
       name: "New payment unlocks access",
@@ -171,4 +171,20 @@ export function scenarios({ accountFor } = {}) {
       expect: false,
     },
   ];
+
+  /* Re-time: every scenario gets its own 10-second slice of the recent past,
+     ordered like the scenarios themselves. On a shared real account, an app
+     with a correct out-of-order guard keeps a per-account high-water mark —
+     if scenarios overlapped in event time, scenario 5's events would be
+     "older" than scenario 4's mark and silently ignored, and we would grade
+     the app on our own collision. resetCreated sits just before each slice so
+     a reset delivery lands inside the guard, not behind it. (Runs less than
+     ~2 minutes apart can still collide with their own previous marks; the
+     not_provable guard reports that honestly instead of passing vacuously.) */
+  list.forEach((scenario, i) => {
+    const base = t - 120 + i * 10;
+    for (const event of scenario.events) event.created = base + Math.round((event.created - t) / 10);
+    scenario.resetCreated = base - 2;
+  });
+  return list;
 }

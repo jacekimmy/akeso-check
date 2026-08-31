@@ -1,4 +1,4 @@
-import { scenarios, signPayload } from "./stripe-events.mjs";
+import { makeEvent, scenarios, signPayload } from "./stripe-events.mjs";
 
 /* Delivers the lifecycle scenarios to a running app and grades what its own
  * billing entitlement says after each one.
@@ -33,10 +33,28 @@ async function probe(probeUrl, account) {
   return body.billingEntitled;
 }
 
-export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret, accountFor, settleMs = 60 }) {
+export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret, accountFor, settleMs = 60, resetBeforeEach = false }) {
   const results = [];
 
   for (const scenario of scenarios({ accountFor })) {
+    /* On a shared real account, return it to "not entitled" before each
+       scenario by delivering a cancellation the app itself understands. On a
+       healthy app this makes every grant provable with one account; on an app
+       that ignores cancellations the reset is a no-op and the vacuous-pass
+       guard below reports not_provable — never a fake pass either way. */
+    if (resetBeforeEach) {
+      const reset = makeEvent({
+        type: "customer.subscription.deleted",
+        account: scenario.account,
+        created: scenario.resetCreated,
+        object: { status: "canceled" },
+      });
+      try {
+        await deliver(webhookUrl, reset, webhookSecret);
+        await new Promise((resolve) => setTimeout(resolve, settleMs));
+      } catch { /* the scenario's own delivery reports a dead server */ }
+    }
+
     /* When scenarios are mapped onto a real shared account (a deployed app
        where rows for made-up accounts cannot exist), a grant scenario that
        starts with access already granted would pass vacuously. Same doctrine

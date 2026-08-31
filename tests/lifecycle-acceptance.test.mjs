@@ -57,6 +57,17 @@ test("shared real account: grants after the first are not provable, never vacuou
   assert.equal(outcome.results.find((r) => r.id === "cancel-at-period-end").outcome, "fail");
 });
 
+test("shared account + reset on the FIXED app: one real account proves everything", async () => {
+  /* The real-world mode: a deployed app has one usable account. Resetting it
+     between scenarios (with a cancellation the app understands) must make
+     every scenario provable — grade A, nothing vacuous, nothing skipped. */
+  const account = `shared-${Date.now()}`; /* fixture state persists on disk across runs */
+  const outcome = await withFixture("fixed-app", 4104, (opts) =>
+    runLifecycle({ ...opts, accountFor: () => account, resetBeforeEach: true }));
+  assert.equal(outcome.grade.letter, "A", JSON.stringify(outcome.results.filter(r => r.outcome !== "pass"), null, 2));
+  assert.equal(outcome.results.filter((r) => r.outcome === "not_provable").length, 0);
+});
+
 test("a dead server is our failure, never the app's grade", async () => {
   const outcome = await runLifecycle({
     webhookUrl: "http://localhost:59999/api/stripe/webhook",
