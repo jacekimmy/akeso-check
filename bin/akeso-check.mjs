@@ -53,6 +53,16 @@ let lifecycle = null;
 let probeNote = null;
 const base = (flagValue("--lifecycle-url") || "").replace(/\/$/, "");
 if (base) {
+  /* The promise on the tin: lifecycle tests never run against a live-mode
+     setup. Delivered events can change entitlement state in whatever database
+     the target app writes to. */
+  if (detection.stripe.liveKeyPresent && !detection.stripe.lifecycleTestable) {
+    console.error("\nThis project is configured with a LIVE Stripe key.");
+    console.error("The lifecycle test changes entitlement state in the app it points at,");
+    console.error("so it only runs against test-mode projects. Switch your env to a test");
+    console.error("key (sk_test_...) and run it again.\n");
+    process.exit(1);
+  }
   const webhookPath = detection.webhookHandlers[0]
     ? "/" + detection.webhookHandlers[0].file.replace(/^app/, "api").replace(/\/route\.(ts|js|mjs|tsx)$/, "").replace(/^api\/api/, "api")
     : "/api/stripe/webhook";
@@ -62,7 +72,7 @@ if (base) {
   if (!secret) {
     console.error("\nNo STRIPE_WEBHOOK_SECRET found in this project's env files.");
     console.error("The lifecycle pass signs events the way Stripe does, with your app's own");
-    console.error("signing secret — without it every delivery would be rejected as forged.");
+    console.error("signing secret. Without it every delivery would be rejected as forged.");
     console.error("Add it to .env.local, or pass --webhook-secret whsec_…\n");
     process.exit(1);
   }
@@ -77,7 +87,7 @@ if (base) {
   if (!probeUrl) {
     installed = await installProbe(root, detection);
     if (!installed.wired) {
-      probeNote = `A probe stub was written to ${path.relative(root, installed.routeFile)} — the Check could not safely pick your access function (${installed.reason}). Complete the two marked lines (or ask your coding agent to), then run this again.`;
+      probeNote = `A probe stub was written to ${path.relative(root, installed.routeFile)}. The Check could not safely pick your access function (${installed.reason}). Complete the two marked lines (or ask your coding agent to), then run this again.`;
       await removeProbe(installed.routeFile).catch(() => {});
       installed = null;
     } else {
@@ -88,7 +98,7 @@ if (base) {
         else { process.stdout.write("."); await new Promise((r) => setTimeout(r, 1000)); }
       }
       console.log();
-      if (!probeUrl) probeNote = "The temporary probe never came up at " + candidate + " — is the dev server running at that address? Start it and run this again.";
+      if (!probeUrl) probeNote = "The temporary probe never came up at " + candidate + ". Is the dev server running at that address? Start it and run this again.";
     }
   }
 
@@ -116,7 +126,7 @@ if (args.includes("--json")) {
 
 const { framework, stripe, database, webhookHandlers, accessDecisionSites, capabilities } = detection;
 
-console.log(`\nAkeso Check — looking at ${root}`);
+console.log(`\nAkeso Check: looking at ${root}`);
 console.log(`Scanned ${detection.scannedFiles} source files.\n`);
 
 console.log(`App        : ${framework.framework}${framework.packageName ? ` (${framework.packageName})` : ""}`);
@@ -126,8 +136,8 @@ console.log(`Database   : ${database.kind}${database.supabase ? ` (${database.su
 if (webhookHandlers.length) {
   const handler = webhookHandlers[0];
   console.log(`\nWebhook handler: ${handler.file}`);
-  console.log(`  signature verified : ${handler.verifiesSignature ? "yes" : "NOT SEEN — anyone could forge events"}`);
-  console.log(`  raw body handling  : ${handler.rawBodySeen ? "seen" : "not seen — verification may fail at runtime"}`);
+  console.log(`  signature verified : ${handler.verifiesSignature ? "yes" : "NOT SEEN. Anyone could forge events"}`);
+  console.log(`  raw body handling  : ${handler.rawBodySeen ? "seen" : "not seen. Verification may fail at runtime"}`);
   console.log(`  events handled     : ${handler.handledEvents.length ? handler.handledEvents.join(", ") : "none of the required set"}`);
   if (handler.missingEvents.length) console.log(`  events MISSING     : ${handler.missingEvents.join(", ")}`);
 } else {
@@ -137,7 +147,7 @@ if (webhookHandlers.length) {
 if (accessDecisionSites.length) {
   console.log("\nWhere paid access appears to be decided (ranked, needs confirming):");
   for (const site of accessDecisionSites.slice(0, 5)) {
-    console.log(`  ${String(site.score).padStart(2)}  ${site.file}${site.clientSideOnly ? "  [client-side — bypassable]" : ""}`);
+    console.log(`  ${String(site.score).padStart(2)}  ${site.file}${site.clientSideOnly ? "  [client-side, bypassable]" : ""}`);
     console.log(`      ${site.evidence.join("; ")}`);
   }
 } else {
@@ -145,7 +155,7 @@ if (accessDecisionSites.length) {
 }
 
 if (lifecycle) {
-  console.log(`\nLifecycle: grade ${lifecycle.grade.letter} — ${lifecycle.grade.reason}`);
+  console.log(`\nLifecycle: grade ${lifecycle.grade.letter}. ${lifecycle.grade.reason}`);
   for (const result of lifecycle.results) {
     const mark = result.outcome === "pass" ? "✓" : result.outcome === "fail" ? "✗" : "—";
     console.log(`  ${mark} ${result.name}`);
@@ -164,7 +174,7 @@ if (!args.includes("--no-open")) {
 }
 
 if (!lifecycle && !probeNote) {
-  console.log(`\nNext — the real test (a pretend customer pays, cancels, gets refunded):`);
+  console.log(`\nNext, the real test (a pretend customer pays, cancels, gets refunded):`);
   console.log(`  1. start your dev server (usually: npm run dev)`);
   console.log(`  2. npx akeso-check --lifecycle-url http://localhost:3000`);
 }

@@ -91,7 +91,7 @@ export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret, accoun
        lifecycle result — for anyone. (Today's cause was our own signing bug;
        an app-side verification bug shows up in the static findings instead.) */
     if (!harnessError && deliveries.length && deliveries.every((d) => !d.ok)) {
-      harnessError = `every delivery was rejected (${deliveries.map((d) => d.status).join(", ")}) — the lifecycle was never exercised`;
+      harnessError = `every delivery was rejected (${deliveries.map((d) => d.status).join(", ")}); the lifecycle was never exercised`;
     }
 
     let observed = null;
@@ -125,7 +125,7 @@ export async function runLifecycle({ webhookUrl, probeUrl, webhookSecret, accoun
 export function gradeOf(results) {
   const graded = results.filter((r) => r.outcome === "pass" || r.outcome === "fail");
   const untestable = results.filter((r) => r.outcome === "could_not_test" || r.outcome === "not_provable");
-  if (graded.length === 0) return { letter: "?", reason: "Nothing could be tested — see the errors below. This is a problem with the run, not proof about the app." };
+  if (graded.length === 0) return { letter: "?", reason: "Nothing could be tested. See the errors below. This is a problem with the run, not proof about the app." };
 
   const failures = graded.filter((r) => r.outcome === "fail");
   const criticalFailure = failures.find((r) => r.critical);
