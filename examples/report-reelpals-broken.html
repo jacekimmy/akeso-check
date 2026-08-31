@@ -38,7 +38,7 @@
     <div class="gradeLetter g-F">F</div>
     <div>
       <h1>Canceled customers keep paid access.</h1>
-      <p>Customers who cancel keep their paid access. This leaks money every day until it is fixed.</p>
+      <p>This leaks money every day until it is fixed.</p>
       <div class="app">watch-this, a Next.js app, with Supabase, Stripe test mode</div>
     </div>
   </div>
@@ -46,12 +46,12 @@
   <h2>What we tested</h2>
   <p class="intro">Akeso acted out ten billing situations against your app: paying, canceling, a failing card, a refund. After each one it asked your app the same question: does this customer still have paid access?</p>
   <div class="rows"><div class="row ok"><span class="mark">✓</span><span class="name">New payment unlocks access</span><span class="detail"></span></div>
-<div class="row mute"><span class="mark">?</span><span class="name">Trial ends, subscription becomes active</span><span class="detail">access was already on before this scenario ran (shared account), so a grant here cannot be proven</span></div>
-<div class="row mute"><span class="mark">?</span><span class="name">Monthly renewal payment keeps access</span><span class="detail">access was already on before this scenario ran (shared account), so a grant here cannot be proven</span></div>
+<div class="row mute"><span class="mark">?</span><span class="name">Trial ends, subscription becomes active</span><span class="detail">not provable: access was already on when this scenario started</span></div>
+<div class="row mute"><span class="mark">?</span><span class="name">Monthly renewal payment keeps access</span><span class="detail">not provable: access was already on when this scenario started</span></div>
 <div class="row warn"><span class="mark">✗</span><span class="name">Card fails, retries exhaust: access ends</span><span class="detail">access should have ended, but your app still grants it</span></div>
 <div class="row bad"><span class="mark">✗</span><span class="name">Customer cancels; period ends: access ends</span><span class="detail">access should have ended, but your app still grants it</span></div>
 <div class="row bad"><span class="mark">✗</span><span class="name">Immediate cancellation removes access</span><span class="detail">access should have ended, but your app still grants it</span></div>
-<div class="row mute"><span class="mark">?</span><span class="name">Customer un-cancels before the period ends</span><span class="detail">access was already on before this scenario ran (shared account), so a grant here cannot be proven</span></div>
+<div class="row mute"><span class="mark">?</span><span class="name">Customer un-cancels before the period ends</span><span class="detail">not provable: access was already on when this scenario started</span></div>
 <div class="row note"><span class="mark">•</span><span class="name">Latest charge refunded (follows the app's own policy)</span><span class="detail">your app's policy: keeps access</span></div>
 <div class="row warn"><span class="mark">✗</span><span class="name">The same event delivered twice</span><span class="detail">access should have ended, but your app still grants it</span></div>
 <div class="row warn"><span class="mark">✗</span><span class="name">An old 'still active' event arrives after cancellation</span><span class="detail">access should have ended, but your app still grants it</span></div></div>

@@ -101,7 +101,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
     <div class="gradeLetter g-${escapeHtml(grade.letter)}">${escapeHtml(grade.letter)}</div>
     <div>
       <h1>${escapeHtml(GRADE_COPY[grade.letter] || grade.reason)}</h1>
-      <p>${escapeHtml(grade.reason)}</p>
+      <p>${escapeHtml(grade.letter === "F" ? "This leaks money every day until it is fixed." : grade.reason)}</p>
       <div class="app">${escapeHtml([
         detection.framework?.packageName || detection.root,
         { "next-app-router": "a Next.js app", "next-pages": "a Next.js app", express: "an Express app", "supabase-edge": "a Supabase Edge app", "node-other": "a Node app" }[detection.framework?.framework] || null,
