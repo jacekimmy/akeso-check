@@ -17,7 +17,7 @@ const GRADE_COPY = {
   C: "One lifecycle scenario fails.",
   D: "Several lifecycle scenarios fail.",
   F: "Canceled customers keep paid access.",
-  "?": "The run itself had problems — this is not a verdict on your app.",
+  "?": "The run itself had problems. This is not a verdict on your app.",
 };
 
 export function renderReport({ detection, lifecycle, generatedAt = new Date() }) {
@@ -29,12 +29,12 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
     staticFindings.push({ tone: "bad", text: "No Stripe webhook handler was found. Payment events from Stripe have nowhere to land." });
   } else {
     if (!handler.verifiesSignature) staticFindings.push({ tone: "bad", text: "The webhook handler does not verify Stripe's signature. Anyone who finds the URL can forge payment events." });
-    else if (!handler.rawBodySeen) staticFindings.push({ tone: "warn", text: "Signature verification exists, but raw-body handling was not seen — verification like this often fails at runtime." });
+    else if (!handler.rawBodySeen) staticFindings.push({ tone: "warn", text: "Signature verification exists, but raw-body handling was not seen. Verification like this often fails at runtime." });
     if (handler.missingEvents?.length) staticFindings.push({ tone: "warn", text: `The handler ignores ${handler.missingEvents.length} of the 7 lifecycle events: ${handler.missingEvents.join(", ")}.` });
     if (staticFindings.length === 0) staticFindings.push({ tone: "ok", text: "Signature verified against the raw body, and all 7 lifecycle events are handled." });
   }
   const clientGate = (detection.accessDecisionSites || []).find((site) => site.clientSideOnly);
-  if (clientGate) staticFindings.push({ tone: "warn", text: `Paid access appears to be checked in the browser (${clientGate.file}) — a gate anyone can step around with devtools.` });
+  if (clientGate) staticFindings.push({ tone: "warn", text: `Paid access appears to be checked in the browser (${clientGate.file}), a gate anyone can step around with devtools.` });
 
   const scenarioRows = (lifecycle?.results || []).map((result) => {
     const mark = result.outcome === "pass" ? "✓"
@@ -56,14 +56,14 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   ).join("\n");
 
   const limits = [
-    "Only the billing lifecycle was tested — not login, checkout UI, or anything else.",
+    "Only the billing lifecycle was tested. Not login, checkout UI, or anything else.",
     "Events were delivered locally with your app's own webhook secret. If your handler re-fetches objects from Stripe's API, run the sandbox mode with your Stripe test key for full fidelity.",
     detection.capabilities?.blockers?.length ? `Not possible on this project yet: ${detection.capabilities.blockers.join(" ")}` : null,
   ].filter(Boolean).map((limit) => `<li>${escapeHtml(limit)}</li>`).join("\n");
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Akeso Check — ${escapeHtml(detection.framework?.packageName || "your app")}</title>
+<title>Akeso Check · ${escapeHtml(detection.framework?.packageName || "your app")}</title>
 <style>
   :root { --bg:#fcfcfd; --ink:#16181d; --ink2:#5b6270; --ink3:#8a919e; --line:#e6e8ec;
     --ok:#12784b; --warn:#96620a; --bad:#b3261e; --note:#2f4a78; }
@@ -95,7 +95,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   .cta a { display:inline-block; background:var(--ink); color:var(--bg); text-decoration:none; border-radius:7px; padding:10px 18px; font-size:15px; font-weight:500; }
   footer { margin-top:44px; font-size:12.5px; color:var(--ink3); }
 </style></head><body><div class="shell">
-  <div class="local">🔒 This report is a file on your computer. Nothing was sent anywhere.</div>
+  <div class="local">This report is a file on your computer. Nothing was sent anywhere.</div>
   <div class="gradeCard">
     <div class="gradeLetter g-${escapeHtml(grade.letter)}">${escapeHtml(grade.letter)}</div>
     <div>
@@ -116,7 +116,7 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
 
   ${grade.letter === "A" ? "" : `<div class="cta">
     <h3>Want this fixed?</h3>
-    <p>The Fix Plan is an automated repair — signature verification, every lifecycle event handled, and a nightly self-check — delivered as a pull request you (or your coding agent) apply. Then re-run this Check and watch it go green.</p>
+    <p>The Fix Plan is an automated repair, delivered as a pull request you or your coding agent apply. Re-run this Check to see it go green.</p>
     <a href="https://akeso-check.vercel.app/#fix">Get the Fix Plan — $49</a>
   </div>`}
 
