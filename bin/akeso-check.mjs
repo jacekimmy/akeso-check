@@ -84,7 +84,7 @@ if (base) {
      up. Removal happens no matter how the run ends. */
   let probeUrl = null;
   let installed = null;
-  for (const candidate of [`${base}/api/__akeso_probe`, `${base}/__akeso_probe`]) {
+  for (const candidate of [`${base}/api/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`, `${base}/__akeso_probe`]) {
     if (await probeAnswers(candidate)) { probeUrl = candidate; break; }
   }
   if (!probeUrl) {

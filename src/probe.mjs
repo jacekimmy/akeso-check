@@ -79,9 +79,14 @@ export async function chooseProbeTarget(root, accessDecisionSites) {
   };
 }
 
+/* No path segment may start with an underscore. Next.js treats an
+   underscore-prefixed folder as a PRIVATE folder and excludes it from routing
+   entirely, so the old `__akeso_probe` route silently never existed on any
+   real Next.js app. The fixtures are plain Node servers, which is why the
+   tests never caught it; a real user's run did. */
 function probeRoutePath(root, framework) {
-  if (framework === "next-pages") return path.join(root, "pages", "api", "__akeso_probe.ts");
-  return path.join(root, "app", "api", "__akeso_probe", "route.ts");
+  if (framework === "next-pages") return path.join(root, "pages", "api", "akeso-probe.ts");
+  return path.join(root, "app", "api", "akeso-probe", "route.ts");
 }
 
 /* Relative import from the generated route file to the access module, with the
@@ -146,7 +151,7 @@ export async function installProbe(root, detection) {
   await writeFile(routeFile, content);
   return {
     routeFile,
-    urlPath: "/api/__akeso_probe",
+    urlPath: "/api/akeso-probe",
     wired: Boolean(target.chosen),
     reason: target.reason,
     target: target.chosen || null,
@@ -162,6 +167,6 @@ export async function removeProbe(routeFile) {
   await rm(routeFile);
   /* tidy the wrapper dir Next requires, only if we created it and it is now empty */
   const dir = path.dirname(routeFile);
-  if (path.basename(dir) === "__akeso_probe") await rm(dir, { recursive: false }).catch(() => {});
+  if (["akeso-probe", "__akeso_probe"].includes(path.basename(dir))) await rm(dir, { recursive: false }).catch(() => {});
   return { removed: true };
 }

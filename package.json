@@ -1,12 +1,24 @@
 {
   "name": "akeso-check",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Prove whether your app grants and revokes paid access correctly. Runs on your machine; nothing leaves it.",
   "type": "module",
-  "bin": { "akeso-check": "bin/akeso-check.mjs" },
+  "bin": {
+    "akeso-check": "bin/akeso-check.mjs"
+  },
   "license": "MIT",
-  "keywords": ["stripe", "billing", "webhooks", "subscriptions", "entitlement", "saas", "testing"],
-  "engines": { "node": ">=20" },
+  "keywords": [
+    "stripe",
+    "billing",
+    "webhooks",
+    "subscriptions",
+    "entitlement",
+    "saas",
+    "testing"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "check": "node bin/akeso-check.mjs",
     "test": "node --test tests/*.test.mjs"

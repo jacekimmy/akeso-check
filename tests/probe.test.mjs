@@ -82,3 +82,26 @@ test("removal refuses a file that lost the Akeso marker", async () => {
   const { rm } = await import("node:fs/promises");
   await rm(path.dirname(file), { recursive: true });
 });
+
+/* Next.js treats any folder starting with "_" as a private folder and excludes
+   it from routing, so the probe's original `__akeso_probe` path silently never
+   existed on a real Next.js app. Proven against a live `next dev`: the
+   underscore path 404s, the hyphen path returns the entitlement. The fixtures
+   are plain Node servers, which is why only a real user's run caught it. */
+test("no probe path segment may start with an underscore", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const os = await import("node:os");
+  for (const framework of ["next-app-router", "next-pages", "node-other"]) {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akeso-probe-path-"));
+    try {
+      const installed = await installProbe(root, { framework: { framework }, accessDecisionSites: [] });
+      const segments = path.relative(root, installed.routeFile).split(path.sep);
+      for (const segment of segments) {
+        assert.ok(!segment.startsWith("_"), `${framework}: "${segment}" would be invisible to Next.js routing`);
+      }
+      assert.ok(!installed.urlPath.split("/").some((s) => s.startsWith("_")), `${framework}: url path must not be private`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
