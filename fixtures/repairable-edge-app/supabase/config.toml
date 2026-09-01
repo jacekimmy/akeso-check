@@ -8,5 +8,3 @@ port = 54322
 enabled = false
 [functions.stripe-webhook]
 verify_jwt = false
-[functions.akeso-probe]
-verify_jwt = false
