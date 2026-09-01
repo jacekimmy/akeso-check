@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { flagValue as flagValueOf, positionalPath } from "../args.mjs";
 import { detect } from "../detect.mjs";
 import { runLifecycle } from "../lifecycle.mjs";
+import { scenarios } from "../stripe-events.mjs";
 import { installProbe, removeProbe } from "../probe.mjs";
 import { applyFixPlan, branchForFix, buildFixPlan, gitState, revertFix } from "../fix.mjs";
 import { appendEntry, fixEntry, lastOfKind, readLedger } from "../ledger.mjs";
@@ -38,7 +39,7 @@ export async function runFix(args) {
      results. Static findings come from now; scenario failures come from the
      run that actually happened. */
   const lifecycle = lastCheck.scenarioResults?.length
-    ? { results: lastCheck.scenarioResults.map((row) => ({ ...row, name: row.id, expected: EXPECTED[row.id] ?? null })) }
+    ? { results: rehydrate(lastCheck.scenarioResults) }
     : null;
   const plan = buildFixPlan({ detection, lifecycle });
 
@@ -214,13 +215,18 @@ async function projectWebhookSecret(root) {
   return null;
 }
 
-/* The expected outcome of each scenario id, so a ledger row can be turned back
-   into "this was a grant that failed" or "this was a removal that failed". */
-const EXPECTED = {
-  "checkout-grants": true, "trial-converts": true, "renewal-succeeds": true,
-  "payment-fails": false, "cancel-at-period-end": false, "immediate-cancel": false,
-  reactivation: true, refund: null, "duplicate-delivery": false, "out-of-order": false,
-};
+/* Turns the compact ledger rows ({ id, outcome }) back into full scenarios, so
+   a repair can say "Customer cancels; period ends: access ends" rather than
+   "cancel-at-period-end". Built from the scenario definitions themselves —
+   hand-copied maps of ids to names and expectations drift the moment a
+   scenario is renamed. */
+const SCENARIO_META = new Map(scenarios().map((scenario) => [scenario.id, { name: scenario.name, expected: scenario.expect }]));
+
+const rehydrate = (rows = []) => rows.map((row) => ({
+  ...row,
+  name: SCENARIO_META.get(row.id)?.name || row.id,
+  expected: SCENARIO_META.get(row.id)?.expected ?? null,
+}));
 
 async function revert(root, ledger) {
   const lastFix = lastOfKind(ledger, "fix");
