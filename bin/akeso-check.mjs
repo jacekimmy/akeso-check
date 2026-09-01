@@ -37,6 +37,7 @@ THE LOOP. Three steps, and each one hands something to the next.
                npx akeso-check --lifecycle-url <url>    the real test: a pretend
                                                         customer pays, cancels, fails
                                                         a card, gets refunded
+               add --account <id> --probe-url <url>     a deployed test environment
                add --sandbox                            same, with real Stripe events
                                                         from your own test sandbox,
                                                         including a trial and a renewal

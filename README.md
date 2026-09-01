@@ -61,6 +61,8 @@ Options:
   and renewal via a test clock (needs your test key in the project's env)
 - `--account <id>` run every scenario against one real account id (for deployed
   test environments; the account is reset between scenarios)
+- `--probe-url <url>` a deployed app's own guarded probe, token included, so
+  the Check does not try to install a temporary one over a live deploy
 - `--webhook-secret <whsec_...>` override the signing secret (normally read
   from your project's env files, locally)
 - `--html <path>` where to write the report
