@@ -21,7 +21,12 @@ const GRADE_COPY = {
 };
 
 export function renderReport({ detection, lifecycle, generatedAt = new Date() }) {
-  const grade = lifecycle?.grade ?? { letter: "?", reason: "The lifecycle test did not run." };
+  /* Static-only is a normal, successful outcome, not a broken run. Saying "the
+     run had problems" over a clean code read was the first thing a real user
+     hit, and it also let the page claim scenarios were acted out when nothing
+     had executed. Nothing on this page may describe work that did not happen. */
+  const staticOnly = !lifecycle;
+  const grade = lifecycle?.grade ?? null;
   const handler = detection.webhookHandlers?.[0] || null;
 
   const staticFindings = [];
@@ -35,6 +40,12 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   }
   const clientGate = (detection.accessDecisionSites || []).find((site) => site.clientSideOnly);
   if (clientGate) staticFindings.push({ tone: "warn", text: `Paid access appears to be checked in the browser (${clientGate.file}), a gate anyone can step around with devtools.` });
+
+  const edgeFunction = handler?.file?.startsWith("supabase/functions/");
+  const staticHeadline = !handler ? "No Stripe webhook handler was found."
+    : !handler.verifiesSignature ? "Your webhook does not verify Stripe's signature."
+    : handler.missingEvents?.length ? `Your webhook ignores ${handler.missingEvents.length} of the 7 billing events.`
+    : "Your billing code reads clean.";
 
   const scenarioRows = (lifecycle?.results || []).map((result) => {
     const mark = result.outcome === "pass" ? "✓"
@@ -56,8 +67,12 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   ).join("\n");
 
   const limits = [
-    "Only the billing lifecycle was tested. Not login, checkout UI, or anything else.",
-    "Events were delivered locally with your app's own webhook secret. If your handler re-fetches objects from Stripe's API, run the sandbox mode with your Stripe test key for full fidelity.",
+    staticOnly
+      ? "Nothing was executed. This is a read of your code, so it cannot tell you what your app really does when a customer cancels."
+      : "Only the billing lifecycle was tested. Not login, checkout UI, or anything else.",
+    staticOnly
+      ? null
+      : "Events were delivered locally with your app's own webhook secret. If your handler re-fetches objects from Stripe's API, run the sandbox mode with your Stripe test key for full fidelity.",
     detection.capabilities?.blockers?.length ? `Not possible on this project yet: ${detection.capabilities.blockers.join(" ")}` : null,
   ].filter(Boolean).map((limit) => `<li>${escapeHtml(limit)}</li>`).join("\n");
 
@@ -95,13 +110,18 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   .cta h3 { margin:0 0 6px; font-size:17px; } .cta p { margin:0 0 14px; color:var(--ink2); font-size:14.5px; }
   .cta a { display:inline-block; background:var(--ink); color:var(--bg); text-decoration:none; border-radius:7px; padding:10px 18px; font-size:15px; font-weight:500; }
   footer { margin-top:44px; font-size:12.5px; color:var(--ink3); }
+  pre.cmd { background:var(--line); border-radius:8px; padding:13px 15px; overflow-x:auto;
+    font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
+  code.inline { font:13px ui-monospace,SFMono-Regular,Menlo,monospace; }
 </style></head><body><div class="shell">
   <div class="local">This report is a file on your computer. Nothing was sent anywhere.</div>
   <div class="gradeCard">
-    <div class="gradeLetter g-${escapeHtml(grade.letter)}">${escapeHtml(grade.letter)}</div>
+    ${staticOnly ? "" : `<div class="gradeLetter g-${escapeHtml(grade.letter)}">${escapeHtml(grade.letter)}</div>`}
     <div>
-      <h1>${escapeHtml(GRADE_COPY[grade.letter] || grade.reason)}</h1>
-      <p>${escapeHtml(grade.letter === "F" ? "This leaks money every day until it is fixed." : grade.reason)}</p>
+      <h1>${escapeHtml(staticOnly ? staticHeadline : (GRADE_COPY[grade.letter] || grade.reason))}</h1>
+      <p>${escapeHtml(staticOnly
+        ? "This is a read of your code. The live test, where a pretend customer pays and cancels, has not run yet."
+        : grade.letter === "F" ? "This leaks money every day until it is fixed." : grade.reason)}</p>
       <div class="app">${escapeHtml([
         detection.framework?.packageName || detection.root,
         { "next-app-router": "a Next.js app", "next-pages": "a Next.js app", express: "an Express app", "supabase-edge": "a Supabase Edge app", "node-other": "a Node app" }[detection.framework?.framework] || null,
@@ -111,12 +131,17 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
     </div>
   </div>
 
-  <h2>What we tested</h2>
+  ${staticOnly ? `<h2>The live test has not run yet</h2>
+  <p class="intro">Reading code can only tell you what your app is supposed to do. To see what it actually does when a customer cancels, Akeso needs to run against your app while it is running.</p>
+  ${edgeFunction
+    ? `<p class="intro">Your webhook is a Supabase Edge Function. The live test does not support that shape yet, so this code read is everything Akeso can prove about this project today.</p>`
+    : `<p class="intro">Start your app the way you normally do (often <code class="inline">npm run dev</code>), then run this in the same folder:</p>
+  <pre class="cmd">npx akeso-check --lifecycle-url http://localhost:3000</pre>`}` : `<h2>What we tested</h2>
   <p class="intro">Akeso acted out ten billing situations against your app: paying, canceling, a failing card, a refund. After each one it asked your app the same question: does this customer still have paid access?</p>
-  <div class="rows">${scenarioRows || '<div class="row mute"><span class="mark">?</span><span class="name">The lifecycle test did not run on this project.</span></div>'}</div>
+  <div class="rows">${scenarioRows}</div>`}
 
   <h2>What your code shows</h2>
-  <p class="intro">Read from your webhook handler and access checks, before anything ran.</p>
+  <p class="intro">Read from your webhook handler and access checks. Nothing was executed to produce this.</p>
   <div class="rows">${findingRows}</div>
 
   <h2>What this did not check</h2>
