@@ -55,7 +55,6 @@ export function renderReport({ detection, lifecycle, sandbox, ledger = [], step 
   const clientGate = (detection.accessDecisionSites || []).find((site) => site.clientSideOnly);
   if (clientGate) staticFindings.push({ tone: "warn", text: `Paid access appears to be checked in the browser (${clientGate.file}), a gate anyone can step around with devtools.` });
 
-  const edgeFunction = handler?.file?.startsWith("supabase/functions/");
   const staticHeadline = !handler ? "No Stripe webhook handler was found."
     : !handler.verifiesSignature ? "Your webhook does not verify Stripe's signature."
     : handler.missingEvents?.length ? `Your webhook ignores ${handler.missingEvents.length} of the 7 billing events.`

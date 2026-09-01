@@ -26,13 +26,14 @@ test("a code read alone points at the live test", () => {
   assert.ok(step.firstDoThis.includes("npm run dev"), "it says to start the app first");
 });
 
-test("an app whose webhook shape is unsupported is told so, not sent in circles", () => {
+test("a Supabase Edge Function app is sent to the Supabase CLI, not to a dev server", () => {
   const step = nextStep({
     detection: detection({ webhookHandlers: [{ file: "supabase/functions/stripe/index.ts" }] }),
     ledger: [entry("check")],
   });
-  assert.equal(step.stage, "static-only-unsupported");
-  assert.equal(step.command, null, "no command is better than a command that cannot work");
+  assert.equal(step.stage, "needs-live-test");
+  assert.match(step.command, /127\.0\.0\.1:54321/, "edge functions are served by the Supabase CLI on 54321");
+  assert.match(step.firstDoThis, /supabase functions serve/, "it says how to start them");
 });
 
 test("a failing grade points at the Fix", () => {

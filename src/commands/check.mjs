@@ -131,7 +131,7 @@ if (base) {
     }
     probeUrl = named;
   }
-  for (const candidate of probeUrl ? [] : [`${base}/api/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`, `${base}/__akeso_probe`]) {
+  for (const candidate of probeUrl ? [] : [`${base}/api/akeso-probe`, `${base}/functions/v1/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`, `${base}/__akeso_probe`]) {
     if (await probeAnswers(candidate)) { probeUrl = candidate; break; }
   }
   if (!probeUrl) {

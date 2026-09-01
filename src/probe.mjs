@@ -133,7 +133,48 @@ ${framework === "next-pages"
 `;
 }
 
+/* A Supabase Edge Function app has no Node route to mount a probe on. The
+   probe becomes one more edge function, served by the same `supabase
+   functions serve` the founder already runs, reading the table and column the
+   Check found through the runtime's own service client. Akeso never holds
+   that key: the function runtime injects it, and the file is removed after. */
+export function isEdgeApp(detection) {
+  return Boolean(detection.webhookHandlers?.[0]?.file?.startsWith("supabase/functions/"));
+}
+
+function renderEdgeProbe(detection) {
+  const table = detection.database?.entitlementTable || "profiles";
+  const column = detection.database?.entitlementColumn || "billing_entitled";
+  const statusColumn = /status/i.test(column);
+  return `// ${MARKER}
+// Akeso: temporary probe. Removed when the run ends. Answers one question for
+// the Check: does this account currently have paid access, according to your
+// own database? Reads ${table}.${column}, nothing else, and writes nothing.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+const ENTITLED = new Set(["active", "trialing", "past_due"]);
+
+Deno.serve(async (req) => {
+  const account = new URL(req.url).searchParams.get("account");
+  if (!account) return new Response(JSON.stringify({ error: "account required" }), { status: 400, headers: { "content-type": "application/json" } });
+  const { data, error } = await supabase.from("${table}").select("${column}").eq("id", account).maybeSingle();
+  // A read error is reported, never turned into "not entitled".
+  if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { "content-type": "application/json" } });
+  const value = (data as Record<string, unknown> | null)?.["${column}"];
+  const billingEntitled = ${statusColumn ? "ENTITLED.has(String(value ?? \"\"))" : "Boolean(value)"};
+  return new Response(JSON.stringify({ billingEntitled }), { headers: { "content-type": "application/json" } });
+});
+`;
+}
+
 export async function installProbe(root, detection) {
+  if (isEdgeApp(detection)) {
+    const routeFile = path.join(root, "supabase", "functions", "akeso-probe", "index.ts");
+    await mkdir(path.dirname(routeFile), { recursive: true });
+    await writeFile(routeFile, renderEdgeProbe(detection));
+    return { routeFile, urlPath: "/functions/v1/akeso-probe", wired: true, reason: null, target: { file: "supabase (service client)", name: `${detection.database?.entitlementTable || "profiles"}.${detection.database?.entitlementColumn || "billing_entitled"}` } };
+  }
   const framework = detection.framework?.framework || "next-app-router";
   const routeFile = probeRoutePath(root, framework)
     .replace(/route\.ts$/, framework === "node-other" ? "route.mjs" : "route.ts");

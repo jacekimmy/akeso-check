@@ -1,0 +1,12 @@
+project_id = "repairable-edge-fixture"
+[api]
+enabled = true
+port = 54321
+[db]
+port = 54322
+[studio]
+enabled = false
+[functions.stripe-webhook]
+verify_jwt = false
+[functions.akeso-probe]
+verify_jwt = false

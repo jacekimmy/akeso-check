@@ -32,11 +32,14 @@ export function nextStep({ ledger = [], detection = null, lifecycle = null, sand
 
   if (!ranLive) {
     if (edgeFunction) {
+      /* Lovable and Bolt exports. The webhook is a Deno function served by
+         the Supabase CLI, so the address and the start-up steps differ. */
       return {
-        stage: "static-only-unsupported",
-        headline: "The live test does not support this app's webhook shape yet.",
-        why: "Your webhook is a Supabase Edge Function. Reading the code is everything Akeso can prove here today.",
-        command: null,
+        stage: "needs-live-test",
+        headline: "Next: the real test, where a pretend customer pays and cancels.",
+        why: "Reading code shows what your app is supposed to do. Only running it shows what it actually does. Your webhook is a Supabase Edge Function, so it runs under the Supabase CLI.",
+        command: "npx akeso-check --lifecycle-url http://127.0.0.1:54321",
+        firstDoThis: "start Supabase locally: npx supabase start, then npx supabase functions serve --env-file .env --no-verify-jwt",
       };
     }
     return {

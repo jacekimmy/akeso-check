@@ -127,6 +127,9 @@ export function planRepairs({ detection, lifecycle = null, sandbox = null }) {
    the framework. Writing .ts into a plain JavaScript app produces a file that
    cannot load, and that mistake is invisible until runtime. */
 const ts = (detection) => Boolean(detection.framework?.typescript);
+/* Supabase Edge Functions run on Deno: TypeScript with explicit .ts imports
+   and remote modules. Lovable and Bolt export this shape. */
+const deno = (detection) => Boolean(detection.webhookHandlers?.[0]?.file?.startsWith("supabase/functions/"));
 
 function entitlementModule(detection) {
   const typed = ts(detection);
@@ -161,6 +164,8 @@ ${provenance}
 //   securityOrAbuseBlock      fraud or abuse lock. NEVER overridden, whatever Stripe says.
 //   finalAccessDecision       what your gates actually do. Read, never written.
 `;
+
+  if (deno(detection)) return denoEntitlementModule(detection, { header, table, column });
 
   const orm = detection.database?.ormInstalled || detection.database?.schemaSource || null;
   if (!supabase && (orm === "prisma" || orm === "drizzle")) return ormNativeModule(detection, { header, table, column, orm, typed, t });
@@ -349,6 +354,149 @@ export async function allAccountEntitlements() {
   const rows${t(": any[]")} = await yourDatabase.allAccounts(); // TODO(7), used by reconcile
   return rows.map((row) => ({ account: row.id, billingEntitled: Boolean(row.${column}) }));
 }
+`;
+}
+
+/* Supabase Edge Function apps (Lovable, Bolt): the same six-field module in
+ * Deno, through the supabase-js client the function runtime already
+ * provides. Imports carry .ts extensions and come from esm.sh because that
+ * is how Deno resolves them; nothing here is a guess about the founder's
+ * setup, it is the shape the CLI serves. */
+function denoEntitlementModule(detection, { header, table, column }) {
+  return `${header}
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+export const AKESO_RULE_VERSION = "1";
+
+// Which Stripe subscription statuses mean "entitled" under your policy.
+// past_due is the grace period: still entitled. Change this line to change
+// the policy, and bump AKESO_RULE_VERSION when you do.
+const ENTITLED_STATUSES = new Set(["active", "trialing", "past_due"]);
+export const entitledByStatus = (status: string) => ENTITLED_STATUSES.has(status);
+
+export async function getBillingEntitlement(accountId: string) {
+  const { data, error } = await db.from("${table}").select("*").eq("id", accountId).maybeSingle();
+  // A read error is never reported as "not entitled": returning false here
+  // would lock out paying customers.
+  if (error) throw new Error(\`entitlement read failed: \${error.message}\`);
+  const row = data as Record<string, unknown> | null;
+  return {
+    accountId,
+    billingEntitled: Boolean(row?.["${column}"]),
+    manualComplimentaryAccess: Boolean(row?.complimentary_access),
+    manualBillingOverride: Boolean(row?.billing_override),
+    administrativeBlock: Boolean(row?.admin_block),
+    securityOrAbuseBlock: Boolean(row?.abuse_block),
+    finalAccessDecision: Boolean(row?.["${column}"]),
+    ruleVersion: AKESO_RULE_VERSION,
+    decisionSource: "${table}.${column}",
+    readAt: new Date().toISOString(),
+    exists: Boolean(row),
+  };
+}
+
+// The one write. Changes ${column} and nothing else, and only if the row still
+// looks the way we last read it (compare-and-set), so a restore racing a newer
+// change loses loudly instead of winning silently.
+export async function applyBillingEntitlement(
+  accountId: string,
+  target: boolean,
+  { expected, reasonCode, idempotencyKey }: { expected: boolean | null; reasonCode: string; idempotencyKey: string },
+) {
+  const before = await getBillingEntitlement(accountId);
+  if (!before.exists) return { result: "unsupported" as const, reason: "no such account", before };
+  if (before.administrativeBlock || before.securityOrAbuseBlock) {
+    return { result: "unsupported" as const, reason: "account carries an administrative or security block", before };
+  }
+  if (before.manualComplimentaryAccess || before.manualBillingOverride) {
+    return { result: "unsupported" as const, reason: "a human set this account's access on purpose", before };
+  }
+  if (before.billingEntitled === target) return { result: "no_op" as const, before };
+  if (expected !== null && before.billingEntitled !== expected) {
+    return { result: "conflict" as const, reason: "state changed since it was read", before };
+  }
+
+  const { error } = await db.from("${table}").update({ ${column}: target }).eq("id", accountId).eq("${column}", before.billingEntitled);
+  if (error) return { result: "failed" as const, reason: error.message, before };
+
+  const after = await getBillingEntitlement(accountId);
+  return {
+    result: after.billingEntitled === target ? "applied" as const : "failed" as const,
+    idempotencyKey, reasonCode, before, after,
+    verified: after.billingEntitled === target, // success is claimed only after the re-read agrees
+  };
+}
+
+// Idempotency and ordering, both keyed per account. Requires the tables in
+// the akeso migration.
+export async function alreadyProcessed(eventId: string) {
+  const { data } = await db.from("akeso_processed_events").select("event_id").eq("event_id", eventId).maybeSingle();
+  return Boolean(data);
+}
+export async function markProcessed(eventId: string, eventType: string) {
+  await db.from("akeso_processed_events").upsert({ event_id: eventId, event_type: eventType }, { onConflict: "event_id", ignoreDuplicates: true });
+}
+export async function lastEventCreated(accountId: string) {
+  const { data } = await db.from("akeso_event_watermarks").select("last_event_created").eq("account_id", accountId).maybeSingle();
+  return Number((data as { last_event_created?: number } | null)?.last_event_created ?? 0);
+}
+export async function setLastEventCreated(accountId: string, created: number) {
+  await db.from("akeso_event_watermarks").upsert({ account_id: accountId, last_event_created: created }, { onConflict: "account_id" });
+}
+export async function allAccountEntitlements() {
+  const { data, error } = await db.from("${table}").select("id, ${column}");
+  if (error) throw new Error(\`entitlement list failed: \${error.message}\`);
+  return ((data || []) as Record<string, unknown>[]).map((row) => ({ account: String(row.id), billingEntitled: Boolean(row["${column}"]) }));
+}
+`;
+}
+
+function denoWebhookHandler(detection, entitlementImport) {
+  return `// ${AKESO_MARKER}
+// Akeso: Stripe webhook handler (Supabase Edge Function).
+//
+// Correct as written. Every line that touches your database lives in the
+// shared entitlement module, so this file should not need editing.
+//
+// What it does, in order: verify Stripe's signature against the RAW body,
+// ignore events already applied, ignore events older than the last one applied
+// to that account, derive entitlement from subscription status, and write
+// through the one guarded function.
+import Stripe from "https://esm.sh/stripe@14?target=deno";
+import {
+  alreadyProcessed, applyBillingEntitlement, entitledByStatus,
+  lastEventCreated, markProcessed, setLastEventCreated,
+} from "${entitlementImport}";
+
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", { apiVersion: "2023-10-16", httpClient: Stripe.createFetchHttpClient() });
+const cryptoProvider = Stripe.createSubtleCryptoProvider();
+
+${HANDLER_BODY(true).replace(/: any\b/g, ": Record<string, any>")}
+
+Deno.serve(async (request) => {
+  // The raw body, unparsed. Verification against a re-serialized body fails.
+  const rawBody = await request.text();
+  const signature = request.headers.get("stripe-signature");
+
+  let event: Stripe.Event;
+  try {
+    event = await stripe.webhooks.constructEventAsync(rawBody, signature ?? "", Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "", undefined, cryptoProvider);
+  } catch (error) {
+    // An unverified event is not a Stripe event. 400, and nothing else happens.
+    return new Response(\`signature verification failed: \${(error as Error).message}\`, { status: 400 });
+  }
+
+  try {
+    const result = await applyStripeEvent(event);
+    return new Response(JSON.stringify({ received: true, ...result }), { headers: { "content-type": "application/json" } });
+  } catch (error) {
+    // 500 tells Stripe to retry. Swallowing the error here would silently drop
+    // a real billing change forever.
+    return new Response(\`handler failed: \${(error as Error).message}\`, { status: 500 });
+  }
+});
 `;
 }
 
@@ -636,6 +784,8 @@ function webhookHandler(detection, entitlementImport) {
 // to that account, derive entitlement from subscription status, and write
 // through the one guarded function.
 `;
+
+  if (deno(detection)) return denoWebhookHandler(detection, from);
 
   if (framework === "next-app-router") {
     return `${head}
@@ -1026,7 +1176,10 @@ export function buildFixPlan({ detection, lifecycle = null, sandbox = null, with
       : framework === "next-pages" ? `pages/api/stripe/webhook.${handlerExtension}`
       : `akeso/webhook.${moduleExtension}`);
 
-  const entitlementPath = path.join(dir, `entitlement.${moduleExtension}`);
+  const isDeno = deno(detection);
+  const entitlementPath = isDeno
+    ? path.join("supabase", "functions", "_shared", "akeso-entitlement.ts")
+    : path.join(dir, `entitlement.${moduleExtension}`);
 
   /* How one generated file imports another.
      "@/akeso/entitlement" only resolves in a project that configured that
@@ -1035,6 +1188,13 @@ export function buildFixPlan({ detection, lifecycle = null, sandbox = null, with
      everywhere worked only while two files happened to sit at the same depth. */
   const alias = detection.framework?.pathAlias;
   const importFrom = (fromFile, moduleName) => {
+    if (isDeno) {
+      /* Deno resolves relative imports with the extension kept, and every
+         function directory imports the shared module the same way. */
+      const target = path.join("supabase", "functions", "_shared", `akeso-${moduleName}.ts`);
+      const relative = path.relative(path.dirname(fromFile), target).replace(/\\/g, "/");
+      return relative.startsWith(".") ? relative : `./${relative}`;
+    }
     if (alias) return `${alias}akeso/${moduleName}`;
     const target = path.join(dir, `${moduleName}.${moduleExtension}`);
     const relative = path.relative(path.dirname(fromFile), target).replace(/\\/g, "/");
@@ -1047,8 +1207,13 @@ export function buildFixPlan({ detection, lifecycle = null, sandbox = null, with
   const files = [
     { path: entitlementPath, contents: entitlementModule(detection), why: "the one place that touches your database" },
     { path: handlerTarget, contents: webhookHandler(detection, entitlementImport), why: "the corrected Stripe webhook handler", replaces: Boolean(existingHandler) },
-    { path: path.join(dir, `reconcile.${moduleExtension}`), contents: reconcileJob(detection), why: "the nightly backstop for events that never arrived" },
-    { path: path.join(dir, "migration.sql"), contents: migrationSql(detection), why: "the tables the repair needs (you paste this yourself)", manual: true },
+    ...(isDeno ? [] : [{ path: path.join(dir, `reconcile.${moduleExtension}`), contents: reconcileJob(detection), why: "the nightly backstop for events that never arrived" }]),
+    {
+      path: isDeno ? path.join("supabase", "migrations", "20260901000001_akeso.sql") : path.join(dir, "migration.sql"),
+      contents: migrationSql(detection),
+      why: isDeno ? "the tables the repair needs (applied by npx supabase db reset, or paste it)" : "the tables the repair needs (you paste this yourself)",
+      manual: true,
+    },
   ];
 
   /* The monitoring endpoints are opt-in, because they are the only way Akeso

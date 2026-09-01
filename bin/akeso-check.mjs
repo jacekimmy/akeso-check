@@ -6,6 +6,7 @@ import { runApprovals } from "../src/commands/approvals.mjs";
 import { runCertify } from "../src/commands/certify.mjs";
 import { runStatement } from "../src/commands/statement.mjs";
 import { runFeedback } from "../src/commands/feedback.mjs";
+import { runPage } from "../src/commands/page.mjs";
 
 /* One loop, three steps:
  *
@@ -63,6 +64,10 @@ THE LOOP. Three steps, and each one hands something to the next.
                npx akeso-check feedback                 tell Akeso whether a finding was real
                npx akeso-check statement                the month, in plain numbers
 
+  npx akeso-check page                       one page: where this app is in the
+                                             loop, what is waiting for you,
+                                             the receipts. Read from the ledger
+
 Akeso restores access on its own. It never removes access on its own.
 Every run appends to .akeso/ledger.jsonl in your project, and every command
 ends by telling you the next one.
@@ -84,6 +89,8 @@ if (args.includes("--help") || args.includes("-h")) {
   await runStatement(args);
 } else if (command === "feedback") {
   await runFeedback(args);
+} else if (command === "page") {
+  await runPage(args);
 } else {
   await runCheck(args);
 }
