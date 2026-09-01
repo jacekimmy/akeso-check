@@ -28,8 +28,23 @@ refund, the same event delivered twice, events out of order. After each one,
 your app's own code is asked whether that customer still has paid access. The
 report gets the graded results. About a minute.
 
+The highest-fidelity test, if your project's env has your Stripe TEST key:
+
+```
+npx akeso-check --lifecycle-url http://localhost:3000 --sandbox
+```
+
+Real customers and subscriptions are created in your own Stripe test sandbox,
+a Stripe test clock moves time forward (a 7-day trial ending, a month
+passing), and Stripe's own events are delivered to your app: subscribe, trial
+conversion, monthly renewal, cancel at period end, cancellation. Everything
+created is deleted afterwards. Refuses to run with anything but a test-mode
+key (sk_test_...). A few minutes.
+
 Options:
 
+- `--sandbox` real Stripe events from your own test sandbox, including trial
+  and renewal via a test clock (needs your test key in the project's env)
 - `--account <id>` run every scenario against one real account id (for deployed
   test environments; the account is reset between scenarios)
 - `--webhook-secret <whsec_...>` override the signing secret (normally read

@@ -5,12 +5,17 @@ import { detect } from "../src/detect.mjs";
 import { runLifecycle } from "../src/lifecycle.mjs";
 import { renderReport } from "../src/report.mjs";
 import { installProbe, removeProbe } from "../src/probe.mjs";
+import { runSandboxLifecycle } from "../src/sandbox.mjs";
 
 /* The whole Check, in the order a stranger meets it:
  *   npx akeso-check                    → static pass, graded report, opens
  *   npx akeso-check --lifecycle-url http://localhost:3000
  *                                      → probe auto-installed, scenarios run,
  *                                        probe removed, merged report, opens
+ *   … --sandbox                        → additionally: real customers in the
+ *                                        founder's own Stripe TEST sandbox,
+ *                                        test-clock trial + renewal, Stripe's
+ *                                        own events delivered to the app
  * Options: --account <id> (map scenarios onto one real account, reset between),
  * --webhook-secret <whsec_…>, --html <path>, --no-open, --json.
  * Every default favours the founder who read nothing: something visible always
@@ -40,6 +45,22 @@ async function projectWebhookSecret() {
   return null;
 }
 
+/* The founder's own Stripe TEST key, read the same local-only way as the
+   webhook secret. The sandbox driver itself refuses anything but sk_test_/
+   rk_test_; this just finds the value. */
+async function projectStripeKey() {
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_API_KEY", "STRIPE_SK"]) {
+    if (process.env[name]) return process.env[name];
+  }
+  for (const file of [".env.local", ".env", ".env.development.local", ".env.development"]) {
+    const text = await readFile(path.join(root, file), "utf8").catch(() => null);
+    if (!text) continue;
+    const match = text.match(/^\s*STRIPE_(?:SECRET_KEY|API_KEY|SK)\s*=\s*"?([^"\s#]+)/m);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 async function probeAnswers(url) {
   try {
     const response = await fetch(`${url}?account=akeso-warmup`, { signal: AbortSignal.timeout(4000) });
@@ -50,8 +71,17 @@ async function probeAnswers(url) {
 }
 
 let lifecycle = null;
+let sandbox = null;
 let probeNote = null;
+let sandboxNote = null;
+const wantSandbox = args.includes("--sandbox");
 const base = (flagValue("--lifecycle-url") || "").replace(/\/$/, "");
+if (wantSandbox && !base) {
+  console.error("\n--sandbox runs against your app while it is running, so it needs the");
+  console.error("same address the lifecycle test uses. Start your dev server, then:");
+  console.error("  npx akeso-check --lifecycle-url http://localhost:3000 --sandbox\n");
+  process.exit(1);
+}
 if (base) {
   /* The promise on the tin: lifecycle tests never run against a live-mode
      setup. Delivered events can change entitlement state in whatever database
@@ -116,6 +146,30 @@ if (base) {
         ...(account ? { accountFor: () => account, resetBeforeEach: true } : {}),
         settleMs: local ? 150 : 1000,
       });
+
+      if (wantSandbox) {
+        const stripeKey = await projectStripeKey();
+        if (!stripeKey) {
+          sandboxNote = "Sandbox skipped: no Stripe secret key found in this project's env files. Add your TEST key (sk_test_…) as STRIPE_SECRET_KEY and run again.";
+        } else if (!/^(sk|rk)_test_/.test(stripeKey)) {
+          sandboxNote = "Sandbox skipped: the Stripe key in this project is not a test-mode key. The sandbox creates and deletes customers, so it only ever runs against a test sandbox (sk_test_…).";
+        } else {
+          console.log("\nSandbox: real customers in your Stripe test sandbox, trial and renewal");
+          console.log("via a Stripe test clock. This takes a few minutes.");
+          try {
+            sandbox = await runSandboxLifecycle({
+              stripeKey,
+              webhookUrl,
+              probeUrl,
+              webhookSecret: secret,
+              log: (line) => console.log(`  ${line}`),
+            });
+          } catch (error) {
+            /* Our failure, never the app's grade. */
+            sandboxNote = `Sandbox could not finish: ${error?.message || error}. Nothing from this counts against your app.`;
+          }
+        }
+      }
     } finally {
       if (installed) await removeProbe(installed.routeFile).catch(() => {});
     }
@@ -123,7 +177,7 @@ if (base) {
 }
 
 if (args.includes("--json")) {
-  console.log(JSON.stringify({ detection, lifecycle }, null, 2));
+  console.log(JSON.stringify({ detection, lifecycle, sandbox }, null, 2));
   process.exit(0);
 }
 
@@ -164,12 +218,20 @@ if (lifecycle) {
     console.log(`  ${mark} ${result.name}`);
   }
 }
+if (sandbox) {
+  console.log(`\nSandbox (real Stripe events): grade ${sandbox.grade.letter}. ${sandbox.grade.reason}`);
+  for (const phase of sandbox.phases) {
+    const mark = phase.outcome === "pass" ? "✓" : phase.outcome === "fail" ? "✗" : "—";
+    console.log(`  ${mark} ${phase.phase}`);
+  }
+}
 if (probeNote) console.log(`\n⚠ ${probeNote}`);
+if (sandboxNote) console.log(`\n⚠ ${sandboxNote}`);
 for (const blocker of capabilities.blockers) console.log(`⚠ ${blocker}`);
 
 /* Something visible always comes out: the report, and the next step. */
 const out = flagValue("--html") || path.join(root, "akeso-report.html");
-await writeFile(out, renderReport({ detection, lifecycle }));
+await writeFile(out, renderReport({ detection, lifecycle, sandbox }));
 console.log(`\nReport: ${out}`);
 if (process.env.CODESPACES) {
   console.log(`To view it: right-click ${path.basename(out)} in the file list on the left and choose Download, then open the downloaded file.`);

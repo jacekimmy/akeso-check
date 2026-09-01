@@ -20,13 +20,18 @@ const GRADE_COPY = {
   "?": "The run itself had problems. This is not a verdict on your app.",
 };
 
-export function renderReport({ detection, lifecycle, generatedAt = new Date() }) {
+export function renderReport({ detection, lifecycle, sandbox, generatedAt = new Date() }) {
   /* Static-only is a normal, successful outcome, not a broken run. Saying "the
      run had problems" over a clean code read was the first thing a real user
      hit, and it also let the page claim scenarios were acted out when nothing
      had executed. Nothing on this page may describe work that did not happen. */
-  const staticOnly = !lifecycle;
-  const grade = lifecycle?.grade ?? null;
+  const staticOnly = !lifecycle && !sandbox;
+  /* One letter on the card. When both drivers ran, the worse one wins: a
+     clean synthetic pass never papers over a real-event failure, or the other
+     way round. "?" (nothing testable) defers to any driver that did test. */
+  const rank = { "?": 0, A: 1, B: 2, C: 3, D: 4, F: 5 };
+  const grades = [lifecycle?.grade, sandbox?.grade].filter(Boolean);
+  const grade = grades.length ? grades.reduce((a, b) => (rank[b.letter] > rank[a.letter] ? b : a)) : null;
   const handler = detection.webhookHandlers?.[0] || null;
 
   const staticFindings = [];
@@ -62,6 +67,17 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
     return `<div class="row ${cls}"><span class="mark">${mark}</span><span class="name">${escapeHtml(result.name)}</span><span class="detail">${detail}</span></div>`;
   }).join("\n");
 
+  const sandboxRows = (sandbox?.phases || []).map((phase) => {
+    const mark = phase.outcome === "pass" ? "✓" : phase.outcome === "fail" ? "✗" : "?";
+    const cls = phase.outcome === "pass" ? "ok"
+      : phase.outcome === "fail" ? (phase.critical ? "bad" : "warn") : "mute";
+    const detail = phase.outcome === "fail"
+      ? (phase.expected ? "access should have been granted, but your app says no" : "access should have ended, but your app still grants it")
+      : phase.outcome === "pass" ? ""
+      : escapeHtml(phase.reason || "not provable on this run");
+    return `<div class="row ${cls}"><span class="mark">${mark}</span><span class="name">${escapeHtml(phase.phase)}</span><span class="detail">${detail}</span></div>`;
+  }).join("\n");
+
   const findingRows = staticFindings.map((finding) =>
     `<div class="row ${finding.tone}"><span class="mark">${finding.tone === "ok" ? "✓" : finding.tone === "bad" ? "✗" : "!"}</span><span class="name wide">${escapeHtml(finding.text)}</span></div>`,
   ).join("\n");
@@ -70,9 +86,12 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
     staticOnly
       ? "Nothing was executed. This is a read of your code, so it cannot tell you what your app really does when a customer cancels."
       : "Only the billing lifecycle was tested. Not login, checkout UI, or anything else.",
-    staticOnly
+    staticOnly || sandbox
       ? null
-      : "Events were delivered locally with your app's own webhook secret. If your handler re-fetches objects from Stripe's API, run the sandbox mode with your Stripe test key for full fidelity.",
+      : "Events were delivered locally with your app's own webhook secret. If your handler re-fetches objects from Stripe's API, add --sandbox (with your Stripe test key in the project's env) for full fidelity.",
+    sandbox
+      ? `Real Stripe events covered subscribing, trial conversion, one monthly renewal, and cancellation. Failing cards, refunds, duplicates, and out-of-order delivery were ${lifecycle ? "exercised with locally synthesized events only" : "not tested on this run"}.`
+      : null,
     detection.capabilities?.blockers?.length ? `Not possible on this project yet: ${detection.capabilities.blockers.join(" ")}` : null,
   ].filter(Boolean).map((limit) => `<li>${escapeHtml(limit)}</li>`).join("\n");
 
@@ -136,9 +155,13 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   ${edgeFunction
     ? `<p class="intro">Your webhook is a Supabase Edge Function. The live test does not support that shape yet, so this code read is everything Akeso can prove about this project today.</p>`
     : `<p class="intro">Start your app the way you normally do (often <code class="inline">npm run dev</code>), then run this in the same folder:</p>
-  <pre class="cmd">npx akeso-check --lifecycle-url http://localhost:3000</pre>`}` : `<h2>What we tested</h2>
+  <pre class="cmd">npx akeso-check --lifecycle-url http://localhost:3000</pre>`}` : ""}
+  ${lifecycle ? `<h2>What we tested</h2>
   <p class="intro">Akeso acted out ten billing situations against your app: paying, canceling, a failing card, a refund. After each one it asked your app the same question: does this customer still have paid access?</p>
-  <div class="rows">${scenarioRows}</div>`}
+  <div class="rows">${scenarioRows}</div>` : ""}
+  ${sandbox ? `<h2>What real Stripe events showed</h2>
+  <p class="intro">Akeso created a real customer and subscription in your own Stripe test sandbox, moved time forward with a Stripe test clock (a trial ending, a month passing), and delivered Stripe's own events to your app. Everything it created was deleted afterwards.</p>
+  <div class="rows">${sandboxRows}</div>` : ""}
 
   <h2>What your code shows</h2>
   <p class="intro">Read from your webhook handler and access checks. Nothing was executed to produce this.</p>
@@ -147,6 +170,9 @@ export function renderReport({ detection, lifecycle, generatedAt = new Date() })
   <h2>What this did not check</h2>
   <ul class="limits">${limits}</ul>
 
-  <footer>Akeso Check · ${escapeHtml(generatedAt.toISOString().slice(0, 16).replace("T", " "))} · ${lifecycle ? `${lifecycle.scenarioCount} lifecycle scenarios` : "static analysis only"} · local run</footer>
+  <footer>Akeso Check · ${escapeHtml(generatedAt.toISOString().slice(0, 16).replace("T", " "))} · ${[
+    lifecycle ? `${lifecycle.scenarioCount} lifecycle scenarios` : null,
+    sandbox ? `${sandbox.phases.length} real-event phases` : null,
+  ].filter(Boolean).join(" · ") || "static analysis only"} · local run</footer>
 </div></body></html>`;
 }
