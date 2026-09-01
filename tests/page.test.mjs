@@ -83,5 +83,5 @@ test("the page and the terminal agree on the next step", async () => {
   await appendEntry(root, { kind: "check", grade: "F", lifecycleGrade: "F", findings: ["cancels ignored"], scenarioResults: [{ id: "immediate-cancel", outcome: "fail" }] });
   const html = renderPage({ root, ledger: await readLedger(root), detection });
   assert.match(html, /npx akeso-check fix/, "the page offers the same command the terminal would");
-  assert.match(html, /1 failing scenarios, handed to the fix/);
+  assert.match(html, /1 failing scenario, handed to the fix/, "singular, because the count is one");
 });

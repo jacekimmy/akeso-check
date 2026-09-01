@@ -60,9 +60,12 @@ export function renderPage({ root, ledger = [], detection = null, schemaFingerpr
       label: "The check found",
       value: lastCheck?.grade ? `grade ${lastCheck.grade}` : lastCheck ? "the code, unexecuted" : "nothing yet",
       detail: lastCheck ? `${when(lastCheck.at)}${lastCheck.findings?.length ? `. ${lastCheck.findings.join(". ")}.` : ""}` : "Run the check.",
-      hands: lastCheck?.scenarioResults?.length
-        ? `${lastCheck.scenarioResults.filter((r) => r.outcome === "fail").length} failing scenarios, handed to the fix`
-        : "",
+      hands: (() => {
+        const failing = (lastCheck?.scenarioResults || []).filter((r) => r.outcome === "fail").length;
+        /* A passing check hands nothing to the fix; saying "0 failing scenarios,
+           handed to the fix" describes a handoff that did not happen. */
+        return failing > 0 ? `${failing} failing scenario${failing === 1 ? "" : "s"}, handed to the fix` : "";
+      })(),
     },
     {
       label: "The fix wrote",

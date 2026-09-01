@@ -8,3 +8,7 @@ fixtures/*/data/profiles.json
 # The repairable fixture ships local SDK doubles so the end-to-end test can
 # execute generated code with no install. They are source, not dependencies.
 !fixtures/repairable-app/node_modules/
+
+# Supabase CLI scratch inside fixtures
+fixtures/*/supabase/.temp/
+fixtures/*/supabase/.branches/

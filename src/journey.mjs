@@ -70,7 +70,10 @@ export function buildJourney({ detection = null, lifecycle = null, sandbox = nul
       : (ranLive && passing) ? "not_needed"
       : "todo",
     what: fix
-      ? `Akeso wrote ${fix.files?.length || 0} files: the corrected webhook handler, one entitlement function, and the backstop.`
+      /* The count is the ledger's; the list is not, because the files differ
+         by shape (an edge app has no Node backstop) and naming ones that were
+         not written is exactly the kind of claim this picture must not make. */
+      ? `Akeso wrote ${fix.files?.length || 0} file${(fix.files?.length || 0) === 1 ? "" : "s"}${fix.repairs?.length ? ` for ${fix.repairs.length} repair${fix.repairs.length === 1 ? "" : "s"}` : ""}: the corrected webhook handler and the one file that touches your database.`
       : ranLive && !passing
         ? "Not done yet. This is what fixes what the check found."
         : ranLive
