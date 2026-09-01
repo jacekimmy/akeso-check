@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /* The access probe: a temporary route the Check adds to the founder's app so
@@ -167,6 +167,9 @@ export async function removeProbe(routeFile) {
   await rm(routeFile);
   /* tidy the wrapper dir Next requires, only if we created it and it is now empty */
   const dir = path.dirname(routeFile);
-  if (["akeso-probe", "__akeso_probe"].includes(path.basename(dir))) await rm(dir, { recursive: false }).catch(() => {});
+  /* rmdir, not rm: it removes the folder only when it is empty, so a folder
+     holding anything of the founder's is never touched. (rm without recursive
+     throws on a directory, which silently left an empty folder in their repo.) */
+  if (["akeso-probe", "__akeso_probe"].includes(path.basename(dir))) await rmdir(dir).catch(() => {});
   return { removed: true };
 }

@@ -105,3 +105,17 @@ test("no probe path segment may start with an underscore", async () => {
     }
   }
 });
+
+test("removal leaves nothing behind, not even the folder", async () => {
+  const { mkdtemp, rm, stat } = await import("node:fs/promises");
+  const os = await import("node:os");
+  const root = await mkdtemp(path.join(os.tmpdir(), "akeso-probe-clean-"));
+  try {
+    const installed = await installProbe(root, { framework: { framework: "next-app-router" }, accessDecisionSites: [] });
+    await removeProbe(installed.routeFile);
+    const dir = path.dirname(installed.routeFile);
+    await assert.rejects(() => stat(dir), "the probe folder must be gone, not left empty in their repo");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
