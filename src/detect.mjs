@@ -214,8 +214,75 @@ async function findAccessDecisionSites(root, sourceFiles) {
   return sites.sort((a, b) => b.score - a.score).slice(0, 10);
 }
 
+/* Which table and column actually hold paid access. The Fix generates real
+   queries from this, so a guess would produce code that runs against a table
+   the app does not have. Evidence is counted across the whole codebase and the
+   winner is reported WITH its confidence — "profiles"/"billing_entitled" is
+   the fallback, and the caller is told when that is all it is. */
+const TABLE_READ = /\.from\(\s*["'`]([a-z_][a-z0-9_]*)["'`]\s*\)/gi;
+const ENTITLEMENT_COLUMN = /\b(is_pro|is_premium|is_paid|is_plus|has_access|is_subscribed|billing_entitled|subscription_status|plan|tier)\b/gi;
+const BILLING_TABLES = new Set(["profiles", "users", "accounts", "subscriptions", "subscribers", "customers", "entitlements", "billing"]);
+
+async function findEntitlementStorage(root, sourceFiles, accessDecisionSites) {
+  const tally = (map, key) => map.set(key, (map.get(key) || 0) + 1);
+  const tables = new Map();
+  const columns = new Map();
+  /* Files the ranking already believes decide access are worth more than a
+     random file that happens to mention a table. */
+  const weighted = new Set(accessDecisionSites.slice(0, 5).map((site) => site.file));
+
+  for (const file of sourceFiles) {
+    const content = await readIfThere(file);
+    if (!content) continue;
+    const weight = weighted.has(path.relative(root, file)) ? 3 : 1;
+    for (const match of content.matchAll(TABLE_READ)) {
+      if (!BILLING_TABLES.has(match[1].toLowerCase())) continue;
+      for (let i = 0; i < weight; i += 1) tally(tables, match[1]);
+    }
+    for (const match of content.matchAll(ENTITLEMENT_COLUMN)) {
+      for (let i = 0; i < weight; i += 1) tally(columns, match[1].toLowerCase());
+    }
+  }
+
+  const best = (map) => [...map.entries()].sort((a, b) => b[1] - a[1])[0] || null;
+  const table = best(tables);
+  const column = best(columns);
+  return {
+    entitlementTable: table?.[0] || "profiles",
+    entitlementColumn: column?.[0] || "billing_entitled",
+    /* Confidence is reported, never implied. Generated code says out loud when
+       it is working from a default instead of from evidence. */
+    tableConfirmed: Boolean(table),
+    columnConfirmed: Boolean(column),
+    evidence: {
+      tables: [...tables.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([name, hits]) => ({ name, hits })),
+      columns: [...columns.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([name, hits]) => ({ name, hits })),
+    },
+  };
+}
+
+/* Whether this project is TypeScript, and whether "@/..." resolves in it.
+   Both decide what generated code may look like: writing .ts into a plain
+   JavaScript project, or an "@/" import into a project with no such alias,
+   produces a file that cannot even load. */
+async function detectLanguage(root) {
+  const tsconfigRaw = await readIfThere(path.join(root, "tsconfig.json"));
+  let pathAlias = null;
+  if (tsconfigRaw) {
+    try {
+      /* tsconfig allows comments and trailing commas, so a strict parse fails
+         on perfectly valid files. Both are stripped before parsing. */
+      const cleaned = tsconfigRaw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1").replace(/,(\s*[}\]])/g, "$1");
+      const paths = JSON.parse(cleaned)?.compilerOptions?.paths || {};
+      const alias = Object.keys(paths).find((key) => key.endsWith("/*"));
+      if (alias) pathAlias = alias.slice(0, -1); /* "@/*" -> "@/" */
+    } catch { /* an unparseable tsconfig just means no alias is assumed */ }
+  }
+  return { typescript: Boolean(tsconfigRaw), pathAlias };
+}
+
 export async function detect(root) {
-  const framework = await detectFramework(root);
+  const framework = { ...await detectFramework(root), ...await detectLanguage(root) };
   const env = await readEnv(root);
   const pkgRaw = await readIfThere(path.join(root, "package.json"));
   let deps = {};
@@ -226,6 +293,8 @@ export async function detect(root) {
   const sourceFiles = await collectSourceFiles(root);
   const webhookHandlers = await findWebhookHandler(root, sourceFiles);
   const accessDecisionSites = await findAccessDecisionSites(root, sourceFiles);
+  const storage = await findEntitlementStorage(root, sourceFiles, accessDecisionSites);
+  Object.assign(database, storage);
 
   return {
     root,

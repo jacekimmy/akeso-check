@@ -1,3 +1,5 @@
+import { DEFAULT_POLICY, STATUS_MEANING, entitledUnder } from "./policy.mjs";
+
 /* The live snapshot: compare who Stripe says is paying against who the app
  * says is entitled, and price the disagreement.
  *
@@ -11,34 +13,48 @@
  * limit is stated here and in the report, not discovered later.
  */
 
-/* Which Stripe subscription statuses mean "this customer is paying and should
-   have access" under the default policy. past_due sits in the grace period:
-   still entitled, flagged separately so the founder sees it. */
-const PAYING = new Set(["active", "trialing", "past_due"]);
-
 /* stripeSide: [{ account, status, priceMonthly, subscriptionId }]
    appSide:    [{ account, billingEntitled }]
-   Returns every disagreement, priced. */
-export function compareEntitlements(stripeSide, appSide) {
+   Returns every disagreement, priced. The status-to-access rules live in
+   policy.mjs because two of them are genuinely the merchant's decision. */
+export function compareEntitlements(stripeSide, appSide, policy = DEFAULT_POLICY) {
   const app = new Map(appSide.map((row) => [String(row.account), Boolean(row.billingEntitled)]));
   const seenInStripe = new Set();
 
   const payingButLockedOut = [];
   const canceledButEntitled = [];
+  const noConclusion = [];
 
+  /* One account can hold several subscriptions. Any one of them that entitles
+     the customer entitles the account, so the rows are folded per account
+     before anything is compared — otherwise a customer with an old canceled
+     plan and a current active one reads as a leak. */
+  const byAccount = new Map();
   for (const sub of stripeSide) {
     const account = String(sub.account);
     seenInStripe.add(account);
-    const paying = PAYING.has(sub.status);
-    const entitled = app.get(account);
+    const verdict = entitledUnder(sub.status, policy);
+    const existing = byAccount.get(account);
+    if (!existing) { byAccount.set(account, { ...sub, account, entitled: verdict }); continue; }
+    /* true beats null beats false: an entitling subscription always wins, and
+       an unconcludable one still blocks a confident "not paying". */
+    if (verdict === true || (verdict === null && existing.entitled === false)) {
+      byAccount.set(account, { ...sub, account, entitled: verdict });
+    }
+  }
 
+  for (const sub of byAccount.values()) {
+    const entitled = app.get(sub.account);
     if (entitled === undefined) continue; /* unmatched accounts are reported separately, never guessed at */
 
-    if (paying && !entitled) {
-      payingButLockedOut.push({ account, status: sub.status, priceMonthly: sub.priceMonthly ?? null, subscriptionId: sub.subscriptionId });
-    } else if (!paying && entitled) {
-      canceledButEntitled.push({ account, status: sub.status, priceMonthly: sub.priceMonthly ?? null, subscriptionId: sub.subscriptionId });
-    }
+    const row = { account: sub.account, status: sub.status, priceMonthly: sub.priceMonthly ?? null, subscriptionId: sub.subscriptionId };
+
+    /* A status we will not draw a conclusion from produces no finding in
+       either direction — reported so the founder can see it, never counted. */
+    if (sub.entitled === null) { noConclusion.push({ ...row, why: STATUS_MEANING[sub.status]?.note || "unrecognised Stripe status" }); continue; }
+
+    if (sub.entitled && !entitled) payingButLockedOut.push(row);
+    else if (!sub.entitled && entitled) canceledButEntitled.push({ ...row, certain: STATUS_MEANING[sub.status]?.certain !== false });
   }
 
   /* Entitled in the app with no Stripe subscription at all. Could be a leak,
@@ -54,7 +70,9 @@ export function compareEntitlements(stripeSide, appSide) {
     payingButLockedOut,      /* the customer-hurting direction: paid, locked out */
     canceledButEntitled,     /* the money-leaking direction */
     entitledWithNoSubscription,
+    noConclusion,            /* statuses the policy refuses to judge */
     monthlyExposure,         /* list-price dollars leaking per month, only from rows with a known price */
+    policyVersion: policy.ruleVersion,
     counts: {
       stripeSubscriptions: stripeSide.length,
       appAccounts: appSide.length,

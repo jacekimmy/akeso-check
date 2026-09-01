@@ -1,0 +1,242 @@
+{
+  "tables": {
+    "profiles": [
+      {
+        "id": "s1",
+        "is_pro": true,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s2",
+        "is_pro": true,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s3",
+        "is_pro": true,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s4",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s5",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s6",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s7",
+        "is_pro": true,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s8",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s9",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "s10",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "shared",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      },
+      {
+        "id": "akeso-warmup",
+        "is_pro": false,
+        "admin_block": false,
+        "abuse_block": false,
+        "complimentary_access": false,
+        "billing_override": false
+      }
+    ],
+    "akeso_processed_events": [
+      {
+        "event_id": "evt_akeso_1788231236788_1_5bc7a309",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_2_999987be",
+        "event_type": "customer.subscription.created"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_3_59d39cc3",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_4_ac02c77e",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_5_52f419fa",
+        "event_type": "invoice.paid"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_6_50a3a0e6",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_7_b010f200",
+        "event_type": "invoice.payment_failed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_8_2059b7ab",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_9_5b5d75c4",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_10_4682dfbd",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_11_207cb14b",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_12_e0955e22",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_13_5732c3a1",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_14_671c3c72",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_15_7fb8f704",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_16_a34d8a7a",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_17_01b55a17",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_18_9cdc3ae1",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_19_404a89b4",
+        "event_type": "charge.refunded"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_21_7fe90f30",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_20_f879bef5",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_22_4cc5cdd8",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_23_4cf5a44f",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788231236788_24_3dc74d29",
+        "event_type": "customer.subscription.updated"
+      }
+    ],
+    "akeso_event_watermarks": [
+      {
+        "account_id": "s1",
+        "last_event_created": 1788231116
+      },
+      {
+        "account_id": "s2",
+        "last_event_created": 1788231127
+      },
+      {
+        "account_id": "s3",
+        "last_event_created": 1788231137
+      },
+      {
+        "account_id": "s4",
+        "last_event_created": 1788231149
+      },
+      {
+        "account_id": "s5",
+        "last_event_created": 1788231158
+      },
+      {
+        "account_id": "s6",
+        "last_event_created": 1788231167
+      },
+      {
+        "account_id": "s7",
+        "last_event_created": 1788231178
+      },
+      {
+        "account_id": "s8",
+        "last_event_created": 1788231187
+      },
+      {
+        "account_id": "s9",
+        "last_event_created": 1788231197
+      },
+      {
+        "account_id": "s10",
+        "last_event_created": 1788231208
+      }
+    ]
+  }
+}

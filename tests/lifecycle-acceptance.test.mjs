@@ -10,16 +10,26 @@ import { runLifecycle } from "../src/lifecycle.mjs";
    built for, or that alarms on a healthy app, is worse than no checker. */
 
 async function withFixture(name, port, run) {
+  /* A server left running from an earlier session answers on this port too,
+     with its own stale state — and the test would grade THAT app while
+     believing it graded a fresh fixture. It has produced a phantom failure
+     twice. Refuse to run rather than test a stranger's server. */
+  const squatter = await fetch(`http://localhost:${port}/__akeso_probe?account=warmup`)
+    .then(() => true).catch(() => false);
+  assert.equal(squatter, false, `something is already listening on port ${port}. Stop it and run the tests again; otherwise this test would grade that server instead of a fresh fixture.`);
+
   const server = spawn(process.execPath, ["server.mjs"], {
     cwd: path.resolve("fixtures", name),
     env: { ...process.env, PORT: String(port) },
     stdio: "ignore",
   });
   try {
+    let up = false;
     for (let i = 0; i < 50; i += 1) {
-      try { await fetch(`http://localhost:${port}/__akeso_probe?account=warmup`); break; }
+      try { await fetch(`http://localhost:${port}/__akeso_probe?account=warmup`); up = true; break; }
       catch { await new Promise((r) => setTimeout(r, 100)); }
     }
+    assert.ok(up, `the ${name} fixture never came up on port ${port}`);
     return await run({
       webhookUrl: `http://localhost:${port}/api/stripe/webhook`,
       probeUrl: `http://localhost:${port}/__akeso_probe`,

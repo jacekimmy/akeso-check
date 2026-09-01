@@ -1,0 +1,12 @@
+{
+  "name": "repairable-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A tutorial-shaped Next-style app the Fix must be able to repair, then prove.",
+  "dependencies": {
+    "next": "15.0.0",
+    "stripe": "0.0.0-akeso-fixture",
+    "@supabase/supabase-js": "0.0.0-akeso-fixture"
+  }
+}

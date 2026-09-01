@@ -4,3 +4,7 @@ node_modules/
 akeso-report.html
 *.local.html
 fixtures/*/data/profiles.json
+
+# The repairable fixture ships local SDK doubles so the end-to-end test can
+# execute generated code with no install. They are source, not dependencies.
+!fixtures/repairable-app/node_modules/
