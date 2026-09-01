@@ -121,6 +121,7 @@ export function buildAlerts({ drift, safety, comparison, previousSweep = null })
   if (drift.grants.length) {
     alerts.push({
       level: "urgent",
+      rule: "paying-but-locked-out",
       /* Customer-hurting, so it interrupts even at 3am. */
       title: `${drift.grants.length} paying customer${drift.grants.length === 1 ? " is" : "s are"} locked out`,
       detail: drift.grants.map((row) => row.account).join(", "),
@@ -129,13 +130,14 @@ export function buildAlerts({ drift, safety, comparison, previousSweep = null })
   }
 
   for (const halt of safety.halts) {
-    alerts.push({ level: "urgent", title: "Akeso stopped itself", detail: halt.message, whatHappensNext: "Nothing was changed. Look at the list before approving anything." });
+    alerts.push({ level: "urgent", rule: "self-halt", title: "Akeso stopped itself", detail: halt.message, whatHappensNext: "Nothing was changed. Look at the list before approving anything." });
   }
 
   if (safety.removalsAllowed.length) {
     const exposure = safety.removalsAllowed.reduce((sum, row) => sum + (row.priceMonthly || 0), 0);
     alerts.push({
       level: "action_needed",
+      rule: "canceled-but-entitled",
       title: `${safety.removalsAllowed.length} canceled customer${safety.removalsAllowed.length === 1 ? "" : "s"} still ha${safety.removalsAllowed.length === 1 ? "s" : "ve"} paid access`,
       detail: exposure > 0 ? `About $${exposure.toFixed(2)} a month at list price.` : "No list price known for these, so no dollar figure is claimed.",
       whatHappensNext: `Queued for ${LIMITS.removalDelayMinutes} minutes. Approve or cancel before then.`,
@@ -148,6 +150,7 @@ export function buildAlerts({ drift, safety, comparison, previousSweep = null })
   if (comparison.clean && previousSweep && previousSweep.clean === false) {
     alerts.push({
       level: "good_news",
+      rule: "all-clear-again",
       title: "Everything matches again",
       detail: "Every account's access now agrees with Stripe.",
       whatHappensNext: "Back to quiet. Akeso keeps checking.",

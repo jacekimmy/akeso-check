@@ -5,6 +5,7 @@ import { runMonitor } from "../src/commands/monitor.mjs";
 import { runApprovals } from "../src/commands/approvals.mjs";
 import { runCertify } from "../src/commands/certify.mjs";
 import { runStatement } from "../src/commands/statement.mjs";
+import { runFeedback } from "../src/commands/feedback.mjs";
 
 /* One loop, three steps:
  *
@@ -55,7 +56,10 @@ THE LOOP. Three steps, and each one hands something to the next.
                npx akeso-check monitor --entitlements-url <url>
                                                         compare Stripe against your
                                                         app's real accounts, today
+               npx akeso-check monitor --watch          keep checking, every hour
+               npx akeso-check monitor --after-deploy   you just deployed; check again soon
                npx akeso-check approvals                removals waiting for your yes
+               npx akeso-check feedback                 tell Akeso whether a finding was real
                npx akeso-check statement                the month, in plain numbers
 
 Akeso restores access on its own. It never removes access on its own.
@@ -77,6 +81,8 @@ if (args.includes("--help") || args.includes("-h")) {
   await runApprovals(args);
 } else if (command === "statement") {
   await runStatement(args);
+} else if (command === "feedback") {
+  await runFeedback(args);
 } else {
   await runCheck(args);
 }

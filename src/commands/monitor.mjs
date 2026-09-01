@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import { flagValue as flagValueOf, positionalPath } from "../args.mjs";
 import { detect } from "../detect.mjs";
 import { buildReceipt, runSweep } from "../monitor.mjs";
-import { readLedger, verifyLedger } from "../ledger.mjs";
+import { appendEntry, readLedger, verifyLedger } from "../ledger.mjs";
+import { CADENCE, describeSchedule, dueWork, runLoop, scheduleState } from "../schedule.mjs";
 import { nextStep, printNextStep } from "../next-step.mjs";
 import { describePolicy } from "../policy.mjs";
 import { buildJourney, printJourney } from "../journey.mjs";
@@ -29,6 +30,8 @@ export async function runMonitor(args) {
   const root = path.resolve(positionalPath(args, "monitor") || process.cwd());
 
   if (args.includes("--receipt")) return receipt(root);
+  if (args.includes("--after-deploy")) return afterDeploy(root, flagValue("--ref"));
+  if (args.includes("--watch")) return watch(args, root);
 
   const detection = await detect(root);
   const stripeKey = await projectStripeKey(root);
@@ -201,6 +204,46 @@ export async function runMonitor(args) {
   printJourney(buildJourney({ detection, ledger: finalLedger }));
   printNextStep(nextStep({ ledger: finalLedger, detection }));
   console.log();
+}
+
+/* `monitor --after-deploy`: a deploy is the moment billing code most often
+   breaks, so one is recorded and a fresh sweep becomes due shortly after. The
+   watcher runs it; without a watcher, the founder is told to. */
+async function afterDeploy(root, ref) {
+  await appendEntry(root, { kind: "deploy", ...(ref ? { ref } : {}) });
+  console.log(`\nDeploy recorded${ref ? ` (${ref})` : ""}. A fresh check of your real customers is due in about a minute.`);
+  console.log(`If "npx akeso-check monitor --watch" is running, it will do that itself.`);
+  console.log(`Otherwise, run the monitor yourself once the deploy has settled.\n`);
+}
+
+/* `monitor --watch`: the sweep, forever. Each tick asks the schedule whether a
+   sweep is due and runs one only if so, so the cadence lives in schedule.mjs
+   and not here. A tick that throws is reported and the loop continues, because
+   a monitor that dies quietly on one bad night is worse than no monitor. */
+async function watch(args, root) {
+  const single = args.filter((arg) => arg !== "--watch");
+  const state = scheduleState(await readLedger(root), { now: Date.now() });
+  console.log(`\nWatching. Akeso checks your real customers every ${CADENCE.fullSweepMinutes} minutes, and`);
+  console.log(`again after any deploy you record with "monitor --after-deploy". Ctrl-C to stop.`);
+  for (const line of describeSchedule(state)) console.log(`  ${line}`);
+
+  let stop = false;
+  process.on("SIGINT", () => { stop = true; console.log(`\nStopping after this check.`); });
+  process.on("SIGTERM", () => { stop = true; });
+
+  await runLoop({
+    intervalMs: 60 * 1000,
+    shouldStop: () => stop,
+    tick: async () => {
+      const due = dueWork(await readLedger(root), { now: Date.now() });
+      if (!due.full) return;
+      console.log(`\n${new Date().toISOString().slice(0, 16).replace("T", " ")}  ${due.reasons?.[0]?.detail || "a check is due"}`);
+      await runMonitor(single);
+    },
+    onError: (error) => {
+      console.log(`\nThis check failed and the watcher is continuing: ${error?.message || error}`);
+    },
+  });
 }
 
 /* The app's current answer for every account. Prefers one list call; falls
