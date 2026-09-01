@@ -237,6 +237,29 @@ const ENTITLEMENT_FIELD_RANK = [
 ];
 const snake = (name) => name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 
+/* The text inside a {...} starting at `open`, honouring nested braces and
+   skipping string literals, so an option object like { mode: "date" } inside
+   a column definition cannot end the walk early. */
+function balancedBody(text, open) {
+  let depth = 0;
+  let quote = null;
+  for (let i = open; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === "\\") { i += 1; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "\`") { quote = ch; continue; }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(open + 1, i);
+    }
+  }
+  return null;
+}
+
 async function findSchemaDeclaredStorage(root, sourceFiles) {
   const candidates = [];
 
@@ -259,8 +282,13 @@ async function findSchemaDeclaredStorage(root, sourceFiles) {
     if (!/schema|db|drizzle/i.test(file)) continue;
     const content = await readIfThere(file);
     if (!content || !/(pg|mysql|sqlite)Table\(/.test(content)) continue;
-    for (const match of content.matchAll(/(?:pg|mysql|sqlite)Table\(\s*["'\`]([\w-]+)["'\`]\s*,\s*\{([\s\S]*?)\n\s*\}/g)) {
-      const [, table, body] = match;
+    for (const match of content.matchAll(/(?:pg|mysql|sqlite)Table\(\s*["'\`]([\w-]+)["'\`]\s*,\s*\{/g)) {
+      /* The column object is read to its matching brace, not to the next
+         newline: a one-line pgTable() declaration otherwise swallowed the
+         table declared after it and took credit for its Stripe fields. */
+      const table = match[1];
+      const body = balancedBody(content, match.index + match[0].length - 1);
+      if (body === null) continue;
       const fields = [...body.matchAll(/^\s*(\w+)\s*:/gm)].map((m) => m[1]);
       const stripey = fields.filter((f) => STRIPEY.test(f));
       if (!stripey.length && !STRIPEY.test(table)) continue;
