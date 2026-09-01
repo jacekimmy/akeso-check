@@ -92,26 +92,64 @@ whole thing automatically if its own test disagrees.
 
 ## Monitor
 
+Correct code from now on does not fix the accounts that already drifted.
+Monitor answers the question the code cannot: right now, today, does every
+person's access match what they pay?
+
+Three steps, in order:
+
 ```
-npx akeso-check monitor --entitlements-url http://localhost:3000/api/akeso-entitlements
-npx akeso-check monitor --receipt
+npx akeso-check fix --apply --with-endpoints
+npx akeso-check certify
+npx akeso-check monitor --entitlements-url https://yourapp.com/api/akeso/entitlements
 ```
 
-Compares who Stripe says is paying against who your app actually lets in,
-right now. Read-only unless you pass `--apply`, and even then it only ever
-grants access: taking access away is always queued for a human, capped at 3
-per sweep, and never done to an account granted access in the last 7 days.
+`--with-endpoints` adds two small files to your app: one that lets Akeso read
+who currently has access, and one that lets it change a single account's
+access through your own guarded function. Both refuse every request not
+signed with a secret that is generated on your machine and printed once.
+Delete the restore file and Akeso can no longer write to your app at all.
 
-It states the rule it used before it states any finding, and it declines to
-judge what it cannot judge. A subscription set to cancel at period end still
-counts as paying. An account mid-checkout gets no verdict. An account with no
-Stripe subscription at all is reported, never accused, because trials and
-complimentary access look exactly like that.
+`certify` asks a few plain questions about how you want your customers
+treated (what happens when a card fails, when a subscription pauses, on a
+refund). Akeso does not watch an app until you have answered them, and it
+stops if your database schema changes underneath the answers.
 
-`--receipt` reads the ledger back: access restored, access removed, and
-exposure at list price, kept as three separate numbers. Revenue recovered is
-reported as unmeasured, because Akeso cannot see your payouts and will not put
-a number where it has none.
+`monitor` compares Stripe against your app's real accounts. It states the rule
+it used before it states any finding, and it declines to judge what it cannot:
+a subscription set to cancel at period end still counts as paying, an account
+mid-checkout gets no verdict, and an account with no Stripe subscription at
+all is reported, never accused. If no Stripe subscription matches any account
+your app reported, it says nothing could be compared rather than calling that
+clean.
+
+**Akeso restores access on its own. It never removes access on its own.**
+With `--apply --restore-url <url>`, a paying customer who is locked out is let
+back in immediately and the change is read back to confirm. A cancelled
+customer who still has access is queued for you:
+
+```
+npx akeso-check approvals                    what is waiting for your yes
+npx akeso-check approvals --approve <id>     take that account's access away
+npx akeso-check approvals --cancel <id>      leave it alone
+```
+
+Removals are capped at 3 per sweep and 3 per hour, never applied to an account
+granted access in the last 7 days, and a removal cannot be sent without naming
+the approval that authorised it. A kill switch (`.akeso/HALT`) stops every
+write, grants included.
+
+```
+npx akeso-check statement                    the month, in plain numbers
+npx akeso-check statement --html out.html    the same thing as a page
+```
+
+The statement keeps three numbers apart and never adds them: access restored,
+access removed, and exposure at list price. Revenue recovered is reported as
+unmeasured, because Akeso cannot see your payouts. A month in which Akeso did
+not run is reported as not run, never as clean. Akeso also measures how often
+its own findings were right, and a rule that is wrong more than half the time
+is demoted to record-only until it earns its way back.
 
 ## Privacy
 
