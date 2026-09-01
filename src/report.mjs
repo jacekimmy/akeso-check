@@ -99,41 +99,54 @@ export function renderReport({ detection, lifecycle, sandbox, generatedAt = new 
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Akeso Check · ${escapeHtml(detection.framework?.packageName || "your app")}</title>
 <style>
-  :root { --bg:#fcfcfd; --ink:#16181d; --ink2:#5b6270; --ink3:#8a919e; --line:#e6e8ec;
+  :root { --bg:#f5f6f8; --card:#ffffff; --ink:#16181d; --ink2:#4f5666; --ink3:#878e9b; --line:#e8eaee;
     --ok:#12784b; --warn:#96620a; --bad:#b3261e; --note:#2f4a78; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --ink:#e9ebef; --ink2:#a4abb8;
-    --ink3:#767d8a; --line:#282c34; --ok:#4cbe83; --warn:#dfa94c; --bad:#ef8578; --note:#8aa9dc; } }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0c0e12; --card:#14171d; --ink:#e9ebef; --ink2:#a8aeba;
+    --ink3:#767d8a; --line:#262b33; --ok:#4cbe83; --warn:#dfa94c; --bad:#ef8578; --note:#8aa9dc; } }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 ui-sans-serif,-apple-system,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
-  .shell { max-width:640px; margin:0 auto; padding:40px 24px 100px; }
-  .local { font-size:12.5px; color:var(--ink3); border:1px solid var(--line); border-radius:20px; display:inline-block; padding:3px 12px; margin-bottom:34px; }
-  .gradeCard { border:1px solid var(--line); border-radius:10px; padding:30px 28px; display:flex; gap:26px; align-items:center; }
-  .gradeLetter { font-size:76px; font-weight:700; line-height:1; letter-spacing:-.04em; }
-  .g-A,.g-B { color:var(--ok); } .g-C { color:var(--warn); } .g-D,.g-F { color:var(--bad); } .g-\\? { color:var(--ink3); }
-  .gradeCard h1 { margin:0 0 6px; font-size:22px; letter-spacing:-.02em; }
-  .gradeCard p { margin:0; color:var(--ink2); font-size:15px; }
-  .app { font-size:13px; color:var(--ink3); margin-top:10px; }
-  h2 { font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); margin:44px 0 4px; }
-  .intro { margin:2px 0 12px; color:var(--ink2); font-size:14.5px; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 ui-sans-serif,-apple-system,system-ui,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:664px; margin:0 auto; padding:32px 20px 64px; }
+  .local { text-align:center; font-size:12.5px; color:var(--ink3); margin:0 0 18px; }
+  .shell { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:40px 48px 44px;
+    box-shadow:0 1px 2px rgba(16,20,28,.04), 0 8px 24px -18px rgba(16,20,28,.18); }
+  .brand { display:flex; align-items:baseline; gap:7px; padding-bottom:24px; margin-bottom:36px; border-bottom:1px solid var(--line); }
+  .brand .wordmark { font-size:15px; font-weight:600; letter-spacing:-.01em; }
+  .brand .wordmarkSub { font-size:15px; color:var(--ink3); }
+  .brand .when { margin-left:auto; font-size:12.5px; color:var(--ink3); font-variant-numeric:tabular-nums; }
+  .gradeCard { display:flex; gap:26px; align-items:center; }
+  .gradeLetter { flex:none; width:88px; height:88px; border-radius:18px; display:flex; align-items:center; justify-content:center;
+    font-size:50px; font-weight:600; letter-spacing:-.03em; }
+  .g-A,.g-B { color:var(--ok); background:color-mix(in srgb, var(--ok) 9%, transparent); }
+  .g-C { color:var(--warn); background:color-mix(in srgb, var(--warn) 10%, transparent); }
+  .g-D,.g-F { color:var(--bad); background:color-mix(in srgb, var(--bad) 9%, transparent); }
+  .g-\\? { color:var(--ink3); background:color-mix(in srgb, var(--ink3) 11%, transparent); }
+  .gradeCard h1 { margin:0 0 7px; font-size:22px; font-weight:600; letter-spacing:-.015em; line-height:1.25; }
+  .gradeCard p { margin:0; color:var(--ink2); font-size:14.5px; }
+  .app { font-size:12.5px; color:var(--ink3); margin-top:10px; }
+  h2 { font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin:46px 0 4px; }
+  .intro { margin:4px 0 14px; color:var(--ink2); font-size:13.5px; max-width:56ch; }
   .rows { border-top:1px solid var(--line); }
-  .row { display:flex; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); align-items:baseline; font-size:15px; }
+  .row { display:flex; gap:12px; padding:12px 2px; border-bottom:1px solid var(--line); align-items:baseline; font-size:14px; }
   .mark { width:18px; text-align:center; flex:none; font-weight:600; }
   .row.ok .mark { color:var(--ok); } .row.warn .mark { color:var(--warn); }
   .row.bad .mark { color:var(--bad); } .row.bad .name { color:var(--bad); font-weight:600; }
   .row.note .mark { color:var(--note); } .row.mute { color:var(--ink3); }
   .name { flex:1; } .name.wide { flex:auto; }
-  .detail { color:var(--ink3); font-size:13.5px; text-align:right; max-width:40%; }
-  ul.limits { margin:8px 0 0; padding-left:20px; color:var(--ink2); font-size:14.5px; }
+  .detail { color:var(--ink3); font-size:12.5px; text-align:right; max-width:40%; }
+  ul.limits { margin:8px 0 0; padding-left:18px; color:var(--ink2); font-size:13.5px; }
   ul.limits li { margin-bottom:7px; }
-  .cta { margin-top:48px; border:1px solid var(--line); border-radius:10px; padding:22px 24px; }
-  .cta h3 { margin:0 0 6px; font-size:17px; } .cta p { margin:0 0 14px; color:var(--ink2); font-size:14.5px; }
-  .cta a { display:inline-block; background:var(--ink); color:var(--bg); text-decoration:none; border-radius:7px; padding:10px 18px; font-size:15px; font-weight:500; }
-  footer { margin-top:44px; font-size:12.5px; color:var(--ink3); }
-  pre.cmd { background:var(--line); border-radius:8px; padding:13px 15px; overflow-x:auto;
-    font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
-  code.inline { font:13px ui-monospace,SFMono-Regular,Menlo,monospace; }
-</style></head><body><div class="shell">
+  .cta { margin-top:48px; border:1px solid var(--line); border-radius:12px; padding:24px 26px;
+    background:color-mix(in srgb, var(--ink) 2.5%, transparent); }
+  .cta h3 { margin:0 0 6px; font-size:16px; font-weight:600; } .cta p { margin:0 0 16px; color:var(--ink2); font-size:13.5px; }
+  .cta a { display:inline-block; background:var(--ink); color:var(--card); text-decoration:none; border-radius:8px; padding:10px 18px; font-size:14px; font-weight:500; }
+  footer { margin-top:24px; text-align:center; font-size:12px; color:var(--ink3); }
+  pre.cmd { background:color-mix(in srgb, var(--ink) 5%, transparent); border-radius:8px; padding:13px 15px; overflow-x:auto;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
+  code.inline { font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace; }
+</style></head><body><div class="wrap">
   <div class="local">This report is a file on your computer. Nothing was sent anywhere.</div>
+  <div class="shell">
+  <div class="brand"><span class="wordmark">Akeso</span><span class="wordmarkSub">Check</span><span class="when">${escapeHtml(generatedAt.toISOString().slice(0, 10))}</span></div>
   <div class="gradeCard">
     ${staticOnly ? "" : `<div class="gradeLetter g-${escapeHtml(grade.letter)}">${escapeHtml(grade.letter)}</div>`}
     <div>
@@ -170,6 +183,7 @@ export function renderReport({ detection, lifecycle, sandbox, generatedAt = new 
   <h2>What this did not check</h2>
   <ul class="limits">${limits}</ul>
 
+  </div>
   <footer>Akeso Check · ${escapeHtml(generatedAt.toISOString().slice(0, 16).replace("T", " "))} · ${[
     lifecycle ? `${lifecycle.scenarioCount} lifecycle scenarios` : null,
     sandbox ? `${sandbox.phases.length} real-event phases` : null,
