@@ -274,6 +274,46 @@ test("the loop needs something to run and says so", async () => {
   await assert.rejects(() => runLoop({ shouldStop: () => true }), /needs a tick function/);
 });
 
+test("a loop with no real interval refuses to start rather than spinning", async () => {
+  /* setTimeout(NaN) fires in about a millisecond, so a mis-parsed interval
+     turned the hourly monitor into a machine hammering Stripe and the app. */
+  for (const intervalMs of [Number("1 hour"), 0, -5]) {
+    await assert.rejects(
+      () => runLoop({ tick: () => {}, shouldStop: () => true, intervalMs, sleepImpl: async () => {}, now: () => NOW }),
+      /intervalMs must be a finite number greater than zero/,
+    );
+  }
+});
+
+test("an error handler that itself fails does not end the monitoring", async () => {
+  /* onError is where alerting gets wired, and alerting breaks. A throw from it
+     used to escape the loop, which made reporting a bad night more dangerous
+     than the bad night. */
+  let ticks = 0;
+  const said = [];
+  const realError = console.error;
+  console.error = (line) => said.push(line);
+  let result;
+  try {
+    result = await runLoop({
+      tick: () => { ticks += 1; throw new Error("Stripe answered 429"); },
+      shouldStop: () => ticks >= 3,
+      sleepImpl: async () => {},
+      now: () => NOW,
+      onError: () => { throw new Error("the alert channel is down"); },
+    });
+  } finally {
+    console.error = realError;
+  }
+
+  assert.equal(said.length, 3, "with the handler broken the failure is still said somewhere");
+  assert.match(said[0], /still running and will try again/);
+  assert.equal(result.ticks, 3, "the monitor kept its rhythm");
+  assert.equal(result.stoppedBecause, "asked_to_stop");
+  assert.equal(result.errors.filter((e) => e.phase === "tick").length, 3);
+  assert.equal(result.errors.filter((e) => e.phase === "report").length, 3, "the broken handler is recorded too, not swallowed");
+});
+
 /* --------------------------------------------------------------- words */
 
 test("the words say when Akeso last looked, when it looks next, and what is overdue", () => {
@@ -282,7 +322,37 @@ test("the words say when Akeso last looked, when it looks next, and what is over
 
   assert.match(said, /last checked your customers 20 minutes ago/);
   assert.match(said, /next check is due in about 40 minutes/);
+  assert.match(said, /No gaps since Akeso started watching/);
+});
+
+test("a clean twenty minutes is never reported as a clean thirty days", () => {
+  /* The gap list is empty either way. Only the sentence tells the founder
+     whether that means "measured and clean" or "barely measured at all", and
+     claiming a quiet month Akeso never watched is the whole failure this
+     product argues against. */
+  const said = describeSchedule(scheduleState([sweep(NOW - 20 * MINUTE)], { now: NOW })).join(" ");
+  assert.doesNotMatch(said, /No gaps in the last 30 days/, "29 of those days were never watched");
+  assert.match(said, /No gaps since Akeso started watching at 2026-08-31 11:40 UTC/);
+  assert.match(said, /cannot speak for the 30 days before that/);
+});
+
+test("a window that really was watched end to end is reported as the whole window", () => {
+  /* The other half of the rule above: honesty about a short history must not
+     turn into refusing to credit a long one. */
+  const entries = [];
+  for (let hour = 31 * 24; hour >= 0; hour -= 1) entries.push(sweep(NOW - hour * HOUR, hour % 24 === 0 ? { deep: true } : {}));
+  const said = describeSchedule(scheduleState(entries, { now: NOW })).join(" ");
   assert.match(said, /No gaps in the last 30 days/);
+  assert.doesNotMatch(said, /cannot speak for/);
+});
+
+test("the total dark hours match the periods they are made of", () => {
+  /* Adding up the rounded hours drifted a little per gap. A total that does not
+     match its own list costs the reader their trust in every other number. */
+  const entries = [4, 3, 2, 1, 0].map((n) => sweep(NOW - n * 123 * MINUTE));
+  const said = describeSchedule(scheduleState(entries, { now: NOW })).join(" ");
+  assert.match(said, /4 periods .* had no finished check, 4\.2 hours in total/);
+  assert.doesNotMatch(said, /4\.4 hours/, "four gaps of 1.05 hours are 4.2 hours, not 4.4");
 });
 
 test("the words admit when nothing has finished, and blame the run rather than the app", () => {
@@ -295,13 +365,19 @@ test("the words admit when nothing has finished, and blame the run rather than t
 test("the words name the dark hours instead of averaging them away", () => {
   const entries = [sweep(NOW - 10 * HOUR), sweep(NOW - 9 * HOUR), sweep(NOW - 2 * HOUR), sweep(NOW - HOUR)];
   const said = describeSchedule(scheduleState(entries, { now: NOW })).join(" ");
-  assert.match(said, /1 period in the last 30 days had no finished check, 6 hours in total/);
+  assert.match(said, /1 period since Akeso started watching at 2026-08-31 02:00 UTC had no finished check, 6 hours in total/);
   assert.match(said, /6 hours from 2026-08-31 04:00 UTC/);
 });
 
 test("a late check is called late, in hours a person understands", () => {
   const said = describeSchedule(scheduleState([sweep(NOW - 4 * HOUR), deepSweep(NOW - 4 * HOUR)], { now: NOW })).join(" ");
   assert.match(said, /due now, and it is about 3 hours later than it should have been/);
+});
+
+test("a single hour is written the way a person writes it", () => {
+  const said = describeSchedule(scheduleState([sweep(NOW - 61 * MINUTE), deepSweep(NOW - 61 * MINUTE)], { now: NOW })).join(" ");
+  assert.match(said, /about an hour ago/);
+  assert.doesNotMatch(said, /\b1 hours\b/, "a seam like this tells the reader a machine wrote the sentence");
 });
 
 test("a deploy is given as the reason the check came early", () => {
@@ -341,6 +417,68 @@ test("every reason for doing work explains itself to a human", () => {
     assert.ok(["full", "deep"].includes(reason.work));
     assert.ok(reason.code, "a reason a caller cannot switch on is not a reason");
     assert.match(reason.detail, /^[A-Z].*\.$/, `plain sentence, not a code: ${reason.detail}`);
+  }
+});
+
+test("an entry Akeso had to throw away is said out loud on every path", () => {
+  /* A ledger holding nothing but a future stamped sweep used to read as a
+     clean "nothing has run yet". Discarded evidence that is never mentioned is
+     the quietest way to look covered. */
+  const said = describeSchedule(scheduleState([sweep(NOW + HOUR)], { now: NOW })).join(" ");
+  assert.match(said, /1 entry in the history carries a time Akeso cannot trust/);
+  assert.match(said, /checks again rather than treat that time as covered/);
+
+  const two = describeSchedule(scheduleState([sweep(NOW + HOUR), unrunSweep(NOW + HOUR)], { now: NOW })).join(" ");
+  assert.match(two, /2 entries in the history carry times/, "a person wrote this sentence, not a template");
+});
+
+test("a check that finished but recorded nothing counts among the ones that did not finish", () => {
+  const entries = [sweep(NOW - 5 * HOUR), { kind: "sweep", at: at(NOW - 3 * HOUR) }, { kind: "sweep", at: at(NOW - 2 * HOUR) }];
+  const state = scheduleState(entries, { now: NOW });
+  assert.equal(state.failedSinceLastSuccess, 2, "an entry that cannot show what it compared left the reader just as uninformed");
+  assert.match(describeSchedule(state).join(" "), /2 checks since then did not finish/);
+});
+
+/* ------------------------------------------------- refusing to guess */
+
+test("an unreadable cadence is refused, never answered as nothing being due", () => {
+  /* A NaN deadline is never overdue, so a mis-parsed flag used to buy total
+     silence from dueWork and crash nextRunAt on the date it built. */
+  const entries = [sweep(NOW - 30 * MINUTE)];
+  const broken = { fullSweepMinutes: Number("hourly"), deepSweepHours: 24, afterDeployDelaySeconds: 60 };
+  assert.throws(() => dueWork(entries, { now: NOW, cadence: broken }), /fullSweepMinutes must be a finite number/);
+  assert.throws(() => nextRunAt(entries, { now: NOW, cadence: broken }), /fullSweepMinutes/);
+  assert.throws(() => dueWork(entries, { now: NOW, cadence: { fullSweepMinutes: 0 } }), /greater than zero/);
+});
+
+test("an unreadable reporting window is refused, never reported as no gaps found", () => {
+  const entries = [sweep(NOW - 10 * HOUR), sweep(NOW - HOUR)];
+  assert.throws(() => coverageGaps(entries, { now: NOW, sinceDays: Number("30 days") }), /sinceDays/);
+  assert.throws(() => scheduleState(entries, { now: NOW, sinceDays: -5 }), /sinceDays/);
+});
+
+test("a ledger row that is not an object does not crash the schedule", () => {
+  /* A line reading exactly `null` parses to a null entry. Our own crash must
+     never become the answer about their customers. */
+  const entries = [null, sweep(NOW - 20 * MINUTE), "a stray line"];
+  assert.equal(dueWork(entries, { now: NOW }).full, false);
+  assert.equal(scheduleState(entries, { now: NOW }).ignoredTimestamps, 2, "rows Akeso could not read are counted, not skipped in silence");
+  assert.throws(() => dueWork("not a ledger", { now: NOW }), /entries must be an array/);
+});
+
+test("the same facts in a different order give the same answer", () => {
+  const rows = [sweep(NOW - 3 * HOUR), unrunSweep(NOW - MINUTE), sweep(NOW - MINUTE), deploy(NOW - 2 * HOUR)];
+  const forward = scheduleState(rows, { now: NOW });
+  const backward = scheduleState([...rows].reverse(), { now: NOW });
+  assert.deepEqual(backward, forward, "a fold over an append-only file must not depend on where a line sits");
+});
+
+test("a deploy Akeso cannot place in time never cancels the re-check a real deploy earned", () => {
+  const real = deploy(NOW - 4 * MINUTE);
+  for (const suspect of [{ kind: "deploy", at: "whenever", ref: "bad" }, deploy(NOW + HOUR)]) {
+    const due = dueWork([sweep(NOW - 5 * MINUTE), real, suspect], { now: NOW });
+    assert.equal(due.full, true, "a deploy is re-checked even when a later deploy line is unreadable");
+    assert.equal(due.reasons.find((r) => r.code === "after_deploy").work, "full");
   }
 });
 

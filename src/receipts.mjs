@@ -53,6 +53,41 @@ const dayOf = (iso) => {
 
 const money = (amount) => `$${(Math.round(amount * 100) / 100).toFixed(2)}`;
 
+const plural = (count, one, many) => (count === 1 ? one : many);
+
+/* Reasons written elsewhere in the product are already whole sentences. One of
+   them dropped inside another sentence must not end up with two full stops. */
+const clause = (text) => String(text).replace(/\s*\.\s*$/, "");
+
+/* What each recorded outcome means, in the words a founder reads.
+ *
+ * The ledger stores Akeso's own classification of a write ("no_op",
+ * "could_not_reach"). Printing that token raw does two bad things at once: it
+ * means nothing to the reader, and in the case of could_not_reach it blames
+ * the app for a call that in several paths never left this machine. */
+const RESULT_MEANING = {
+  /* Only reached when the change was applied and NOT read back: an applied
+     change that verified is never a failure. */
+  applied: "the change was made but Akeso could not read it back to confirm",
+  no_op: "your app said nothing needed changing but did not say what the account reads as, so nothing was confirmed",
+  conflict: "the account changed while Akeso was writing to it, so your app refused and nothing was changed",
+  unsupported: "your app refused this change on purpose, so nothing was changed",
+  could_not_reach: "Akeso could not reach your app, so this is a problem with the run and not a finding about your app",
+  failed: "your app tried and could not make the change",
+};
+
+const whyNotCounted = (entry) => RESULT_MEANING[entry.result]
+  ?? (entry.result
+    ? `the change did not confirm, and Akeso recorded the outcome as "${entry.result}"`
+    : "the change did not confirm, and no outcome was recorded");
+
+/* Applied AND read back afterwards. Nothing else is a change that happened. */
+const isConfirmed = (entry) => entry.result === "applied" && entry.verified === true;
+/* Your app was already in the state Akeso was about to set, and said so when
+   read back. That is neither a restore nor a failure, and counting it as
+   either would misdescribe a run in which nothing was wrong. */
+const isNoChangeNeeded = (entry) => entry.result === "no_op" && entry.verified === true;
+
 /* ------------------------------------------------------------- one action */
 
 /* One restore, in one line a founder can read out loud. Every clause is
@@ -70,7 +105,8 @@ export function actionReceipt(entry) {
     : `account ${entry.account}`;
   const plan = entry.plan ?? entry.tier ?? null;
   const applied = entry.result === "applied";
-  const confirmed = applied && entry.verified === true;
+  const confirmed = isConfirmed(entry);
+  const nothingNeeded = isNoChangeNeeded(entry);
   const direction = entry.direction === "grant" || entry.direction === "remove" ? entry.direction : null;
 
   /* The verb carries the honesty. "Restored" is only earned by a change that
@@ -79,9 +115,11 @@ export function actionReceipt(entry) {
   const what = direction === "grant" ? `${plan || "access"} for ${account}`
     : direction === "remove" ? `${plan ? `${plan} ` : ""}access for ${account}`
     : `access for ${account}`;
-  const opening = confirmed
-    ? (direction === "remove" ? `Removed ${what}.` : `Restored ${what}.`)
-    : (direction === "remove" ? `Tried to remove ${what}.` : `Tried to restore ${what}.`);
+  const opening = nothingNeeded
+    ? `Nothing needed changing for ${account}.`
+    : confirmed
+      ? (direction === "remove" ? `Removed ${what}.` : `Restored ${what}.`)
+      : (direction === "remove" ? `Tried to remove ${what}.` : `Tried to restore ${what}.`);
 
   const evidence = [];
   if (entry.stripeStatus) {
@@ -90,27 +128,51 @@ export function actionReceipt(entry) {
   }
   if (entry.before === false) evidence.push("the app said no access");
   else if (entry.before === true) evidence.push("the app still gave access");
+  /* The evidence starts a sentence, and which clause comes first depends on
+     what the entry happens to hold. */
+  const evidenceSentence = evidence.length
+    ? `${evidence.join(", ").charAt(0).toUpperCase()}${evidence.join(", ").slice(1)}.`
+    : null;
 
   const changedAt = clockOf(entry.at);
-  const confirmedAt = clockOf(entry.verifiedAt ?? entry.at);
+  /* Only a recorded verification time may be printed as one. `restoreEntry`
+     does not carry verifiedAt, so falling back to the change time would print
+     a confirmation clock, on almost every real line, for a reading whose time
+     nobody wrote down. The re-read is a fact; its clock is not. */
+  const confirmedAt = clockOf(entry.verifiedAt);
   let outcome;
-  if (confirmed) {
+  if (nothingNeeded) {
+    outcome = `${changedAt ? `Checked ${changedAt} UTC. ` : ""}Your app already had this account in the state Akeso asked for, and read it back to say so.`;
+  } else if (confirmed) {
     const verb = direction === "remove" ? "Changed" : "Fixed";
     outcome = changedAt && confirmedAt
       ? `${verb} ${changedAt}, confirmed ${confirmedAt} UTC.`
-      : "Confirmed by reading the account back afterwards.";
+      : changedAt
+        ? `${verb} ${changedAt} UTC, then read back to confirm it held.`
+        : "Read back afterwards to confirm it held.";
   } else if (applied) {
     /* Applied but not read back. Doctrine: success is claimed only after the
        re-read agrees, so this does not count as a restore anywhere. */
     outcome = `${changedAt ? `Changed ${changedAt} UTC. ` : ""}Akeso could not read it back to confirm, so it does not count as a restore. Check this account yourself.`;
+  } else if (entry.result === "could_not_reach") {
+    /* Ours, not theirs, and several of these paths never sent anything at all.
+       "The app answered could_not_reach" was both jargon and a false statement
+       about the customer's app. */
+    const why = entry.reason || entry.error || null;
+    outcome = `Akeso could not reach your app, so it does not know whether anything changed${why ? `: ${clause(why)}` : ""}. That is a problem with the run, not a finding about your app. Check this account yourself.`;
   } else {
     /* A call that failed tells us nothing about what the app now holds, so
        this line must not claim "nothing changed". */
-    const why = entry.reason || entry.error || (entry.result ? `the app answered ${entry.result}` : null);
-    outcome = `The change was not confirmed${why ? ` (${why})` : ""}, so it is not counted. Check this account yourself.`;
+    const why = entry.reason || entry.error || RESULT_MEANING[entry.result] || null;
+    outcome = why
+      ? `The change was not confirmed: ${clause(why)}. It is not counted. Check this account yourself.`
+      /* An outcome Akeso has no plain words for is still shown, because the
+         alternative is a line that says a change failed and will not say
+         what was recorded. */
+      : `The change was not confirmed${entry.result ? `, and Akeso recorded the outcome as "${entry.result}"` : ""}. It is not counted. Check this account yourself.`;
   }
 
-  return [opening, evidence.length ? `${evidence.join(", ")}.` : null, outcome].filter(Boolean).join(" ");
+  return [opening, evidenceSentence, outcome].filter(Boolean).join(" ");
 }
 
 /* -------------------------------------------------------- the month, folded */
@@ -142,25 +204,64 @@ export function monthlyStatement(entries = [], { month, now = new Date() } = {})
      read both sides measured nothing, and our failure is never a verdict about
      the customer's app. */
   const sweepEntries = inMonth.filter((entry) => entry.kind === "sweep");
-  const ran = sweepEntries.filter((entry) => entry.comparison && typeof entry.comparison === "object");
+  /* Sorted by the time on the entry, not by where it sits in the array. The
+     ledger is append-only, so the two normally agree; when a clock jumps they
+     do not, and a fold that answers "first" and "last" from array position
+     would then swap them. */
+  const ran = sweepEntries
+    .filter((entry) => entry.comparison && typeof entry.comparison === "object")
+    .sort((left, right) => (left.at < right.at ? -1 : left.at > right.at ? 1 : 0));
   const couldNotRun = sweepEntries.filter((entry) => !(entry.comparison && typeof entry.comparison === "object"));
   const cleanSweeps = ran.filter((entry) => entry.comparison.clean === true);
+  /* A sweep that found a disagreement is the whole reason this product exists.
+     Counted separately from "not clean" so that a sweep which recorded no
+     verdict at all cannot be quietly filed as either one. */
+  const driftSweeps = ran.filter((entry) => entry.comparison.clean === false);
+  const noVerdict = ran.length - cleanSweeps.length - driftSweeps.length;
+  /* Of those, the ones that ran perfectly well and simply had nothing to
+     compare: no Stripe subscription matched any account the app reported.
+     Worth naming separately, because "we could not tell" and "the account ids
+     do not line up" send a founder to two completely different places. */
+  const comparedNothing = ran.filter((entry) => entry.comparison.comparable === false).length;
+  const allClean = ran.length > 0 && cleanSweeps.length === ran.length;
+
+  /* The verdict for the month comes from the newest completed reading, not
+     from the whole month: a mismatch on the 3rd that was gone by the 4th is
+     not an open mismatch, and a month that ENDED with one must never be
+     described as clean. */
+  const lastFinished = ran.at(-1) ?? null;
+  const openMismatch = lastFinished?.comparison.clean === false;
+  const lastDrift = lastFinished?.drift && typeof lastFinished.drift === "object" ? lastFinished.drift : null;
+  const counted = (value) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
+  /* Removals are queued for a human and never applied by a sweep, so this
+     number is the one thing on the page that is genuinely waiting on the
+     founder. Absent from older entries, in which case nothing is claimed. */
+  const waitingForYou = lastDrift ? counted(lastDrift.removalsQueued) : null;
+  const lockedOutThen = lastDrift ? counted(lastDrift.grants) : null;
 
   /* ---- restores. Confirmed means applied AND read back afterwards. An
      "applied" that was never verified is a failure here, never a success:
      counting it would let the statement claim work it cannot prove. */
   const restores = inMonth.filter((entry) => entry.kind === "restore");
-  const confirmed = restores.filter((entry) => entry.result === "applied" && entry.verified === true);
-  const notConfirmed = restores.filter((entry) => !(entry.result === "applied" && entry.verified === true));
+  const confirmed = restores.filter(isConfirmed);
+  const noChangeNeeded = restores.filter(isNoChangeNeeded);
+  const notConfirmed = restores.filter((entry) => !isConfirmed(entry) && !isNoChangeNeeded(entry));
   const accessRestored = confirmed.filter((entry) => entry.direction === "grant").length;
   const accessRemoved = confirmed.filter((entry) => entry.direction === "remove").length;
+
+  /* A sweep records the state it found BEFORE it restores anything, so the
+     sweep that found a locked-out customer and put them back one second later
+     is not evidence of an open problem. What is true is narrower and is what
+     gets said: the last reading found a disagreement, these changes came
+     after it, and nothing has been measured since. */
+  const changedSinceLastSweep = lastFinished
+    ? confirmed.filter((entry) => entry.at > lastFinished.at).length
+    : 0;
 
   const failures = notConfirmed.map((entry) => ({
     account: entry.account ?? null,
     direction: entry.direction ?? null,
-    why: entry.result === "applied"
-      ? "the change was made but Akeso could not read it back to confirm"
-      : `the change did not complete${entry.result ? ` (${entry.result})` : ""}`,
+    why: whyNotCounted(entry),
   }));
 
   /* ---- number one of three: what was at stake, at list price. Averaged only
@@ -185,59 +286,152 @@ export function monthlyStatement(entries = [], { month, now = new Date() } = {})
   /* Only a completed sweep covers a day. A day whose only attempt failed
      measured nothing, and letting a dead Stripe key look like coverage is
      exactly the kind of false comfort this statement is for. */
-  const daysMeasured = new Set(ran.map((entry) => entry.at.slice(0, 10))).size;
+  const measuredDays = [...new Set(ran.map((entry) => entry.at.slice(0, 10)))];
+  /* A sweep dated after the moment this statement was made cannot be evidence
+     about a day that has not happened yet. Three such sweeps used to fill a
+     three-day window and produce "checked every day of May". A clock that
+     disagrees with the ledger is worth saying out loud, not counting. */
+  const daysMeasured = measuredDays.filter((day) => Number(day.slice(8, 10)) <= daysInWindow).length;
+  const daysAheadOfClock = measuredDays.length - daysMeasured;
   const daysWithNoSweep = Math.max(0, daysInWindow - daysMeasured);
+  const fullyCovered = daysInWindow > 0 && daysWithNoSweep === 0;
 
   const didNotRun = sweepEntries.length === 0;
   const nothingMeasured = ran.length === 0;
 
+  const lastSweepDay = lastFinished ? dayOf(lastFinished.at) : null;
+
   const notes = [];
   if (didNotRun) {
     notes.push(`Akeso did not run in ${monthLabel}. No sweep happened, so nothing was measured. A month with no sweeps is not a clean month.`);
+    if (restores.length) {
+      /* Changes with no sweep behind them are real and must be visible, but
+         they are not a measurement of the month either. */
+      notes.push(`${restores.length} access ${plural(restores.length, "change was", "changes were")} recorded this month even though no sweep ran. ${plural(restores.length, "It is", "They are")} listed below.`);
+    }
   } else if (nothingMeasured) {
     const reason = couldNotRun.map((entry) => entry.couldNotRun).filter(Boolean).at(-1);
-    notes.push(`Akeso tried ${couldNotRun.length} time${couldNotRun.length === 1 ? "" : "s"} this month and could not complete a sweep${reason ? `. The last reason was: ${reason}` : ""}. That is a problem with the run, not a verdict about your app.`);
+    notes.push(`Akeso tried ${couldNotRun.length} time${couldNotRun.length === 1 ? "" : "s"} this month and could not complete a sweep${reason ? `. The last reason was: ${clause(reason)}` : ""}. That is a problem with the run, not a verdict about your app.`);
   } else if (couldNotRun.length) {
-    notes.push(`${couldNotRun.length} sweep${couldNotRun.length === 1 ? "" : "s"} could not run and measured nothing. Those are problems with the run, not findings about your app.`);
+    notes.push(`${couldNotRun.length} sweep${couldNotRun.length === 1 ? "" : "s"} could not run and measured nothing. ${plural(couldNotRun.length, "That is a problem", "Those are problems")} with the run, not ${plural(couldNotRun.length, "a finding", "findings")} about your app.`);
+  }
+  /* The disagreement itself. Without this the page could show a month of
+     sweeps that every single time found a canceled customer still being let
+     in, and still say nothing was wrong. */
+  if (driftSweeps.length) {
+    notes.push(`${driftSweeps.length} of the ${ran.length} finished ${plural(ran.length, "sweep", "sweeps")} found at least one account whose access did not agree with Stripe.`);
+  }
+  if (openMismatch) {
+    const detail = [
+      lockedOutThen === null ? null : `${lockedOutThen} paying ${plural(lockedOutThen, "customer had", "customers had")} no access at that moment`,
+      waitingForYou === null ? null : `${waitingForYou} canceled ${plural(waitingForYou, "customer", "customers")} still had access and ${plural(waitingForYou, "was", "were")} waiting for you to approve removing it`,
+    ].filter(Boolean).join(", and ");
+    notes.push(`The last finished sweep${lastSweepDay ? `, on ${lastSweepDay},` : ""} found access that did not agree with Stripe${detail ? `: ${detail}` : ""}.`);
+    notes.push(changedSinceLastSweep
+      ? `Akeso changed ${changedSinceLastSweep} account${changedSinceLastSweep === 1 ? "" : "s"} after that sweep and read each one back. Nothing has been measured since, so the next sweep is what will show whether the month ends clean.`
+      : `Nothing has been changed since that sweep.`);
+  }
+  if (waitingForYou !== null) {
+    /* Doctrine: a removal never happens without a person saying yes. If any
+       are waiting, the statement is the wrong place to be quiet about it. */
+    notes.push(`Akeso never takes paid access away on its own. Run npx akeso-check approvals to see what is waiting for you.`);
+  }
+  if (comparedNothing > 0) {
+    notes.push(`${comparedNothing} finished ${plural(comparedNothing, "sweep", "sweeps")} compared nothing at all: no Stripe subscription matched any account your app reported. Stripe has to carry the same account id your app uses. Until it does, these runs prove nothing either way.`);
+  }
+  if (noVerdict - comparedNothing > 0) {
+    const rest = noVerdict - comparedNothing;
+    notes.push(`${rest} finished ${plural(rest, "sweep", "sweeps")} did not record whether everything matched, so ${plural(rest, "it does", "they do")} not count as a day that came back clean.`);
   }
   if (!didNotRun && daysWithNoSweep > 0) {
     notes.push(`${daysWithNoSweep} day${daysWithNoSweep === 1 ? "" : "s"} of this month had no completed sweep. Anything that went wrong and came back on those days would not appear here.`);
   }
+  if (daysAheadOfClock > 0) {
+    notes.push(`${daysAheadOfClock} ${plural(daysAheadOfClock, "day of sweeps is", "days of sweeps are")} dated later than the moment this statement was made, so ${plural(daysAheadOfClock, "it is", "they are")} not counted as covered. The clock on this machine or in the ledger is wrong.`);
+  }
   if (failures.length) {
-    notes.push(`${failures.length} access change${failures.length === 1 ? " was" : "s were"} not confirmed by reading the account back, so ${failures.length === 1 ? "it is" : "they are"} not counted as restored.`);
+    notes.push(`${failures.length} access change${failures.length === 1 ? " did" : "s did"} not confirm, so ${failures.length === 1 ? "it is" : "they are"} not counted as restored. Each one is listed below with what happened.`);
+  }
+  if (noChangeNeeded.length) {
+    notes.push(`${noChangeNeeded.length} change${noChangeNeeded.length === 1 ? "" : "s"} turned out not to be needed: your app already had ${plural(noChangeNeeded.length, "that account", "those accounts")} the way Akeso asked for. Not a failure, and not counted as restored either.`);
   }
   if (unreadable) notes.push(`${unreadable} ledger entr${unreadable === 1 ? "y" : "ies"} could not be read, so nothing in ${unreadable === 1 ? "it" : "them"} is counted here.`);
   if (undated > 0) notes.push(`${undated} ledger entr${undated === 1 ? "y has" : "ies have"} no timestamp and could not be placed in a month.`);
-  if (!didNotRun && !nothingMeasured && !failures.length && cleanSweeps.length === ran.length) {
+  if (!didNotRun && !nothingMeasured && !failures.length && allClean) {
     notes.push(`Every completed sweep found every account matching Stripe.`);
   }
 
+  /* "Found nothing wrong" is the most dangerous sentence on the page, so it
+     sits at the bottom of this chain behind every measurement that would
+     contradict it: a sweep that found a disagreement, and a sweep that never
+     recorded a verdict at all. */
   const headline = didNotRun ? `Akeso did not run in ${monthLabel}.`
     : nothingMeasured ? `Akeso could not complete a sweep in ${monthLabel}.`
     : accessRestored > 0 ? `Akeso restored access for ${accessRestored} paying customer${accessRestored === 1 ? "" : "s"} in ${monthLabel}.`
     : accessRemoved > 0 ? `Akeso removed access from ${accessRemoved} canceled customer${accessRemoved === 1 ? "" : "s"} in ${monthLabel}.`
-    : daysWithNoSweep === 0 ? `Akeso checked every day of ${monthLabel} and found nothing wrong.`
+    : openMismatch ? `Akeso found access that does not agree with Stripe in ${monthLabel}.`
+    : driftSweeps.length ? `Akeso found access that did not agree with Stripe earlier in ${monthLabel}, and the last sweep found none.`
+    : comparedNothing > 0 && comparedNothing === noVerdict ? (ran.length === 1
+      /* Naming the real cause, because "did not record what it found" sends a
+         founder looking for a bug in Akeso when the answer is that Stripe and
+         their app disagree about what an account is called. */
+      ? `Akeso ran one sweep in ${monthLabel}, and it had nothing to compare.`
+      : `Akeso ran ${ran.length} sweeps in ${monthLabel}, and ${comparedNothing} of them had nothing to compare.`)
+    : noVerdict > 0 ? (ran.length === 1
+      ? `Akeso ran one sweep in ${monthLabel}, and it did not record what it found.`
+      : `Akeso ran ${ran.length} sweeps in ${monthLabel}, and ${noVerdict} of them did not record what was found.`)
+    : fullyCovered ? `Akeso checked every day of ${monthLabel} and found nothing wrong.`
     : `Akeso ran ${ran.length} sweep${ran.length === 1 ? "" : "s"} in ${monthLabel} and found nothing wrong on those days.`;
 
   const subheadline = didNotRun
-    ? "No sweep happened this month, so there is nothing here that was measured."
+    ? `No sweep happened this month, so there is nothing here that was measured.${restores.length ? ` The ${plural(restores.length, "access change", "access changes")} below happened without one.` : ""}`
     : nothingMeasured
       ? "Every attempt failed before it could read both sides. Nothing here is a verdict about your app."
-      : accessRestored > 0 || accessRemoved > 0
-        ? "Each change below was read back afterwards to confirm it held."
-        : daysWithNoSweep === 0
-          ? "Every account's access agreed with Stripe on every day that was checked."
-          : "On the days it ran, every account's access agreed with Stripe.";
+      : openMismatch
+        ? (changedSinceLastSweep
+          ? `The last finished sweep${lastSweepDay ? `, on ${lastSweepDay},` : ""} found accounts whose access did not agree with Stripe, and Akeso changed ${changedSinceLastSweep} of them afterwards. Nothing has been measured since.`
+          : `The last finished sweep${lastSweepDay ? `, on ${lastSweepDay},` : ""} found accounts whose access did not agree with Stripe, and nothing has been changed since.`)
+        : accessRestored > 0 || accessRemoved > 0
+          ? failures.length
+            /* The headline counts only confirmed changes, so a blanket "each
+               change was read back" would be false the moment one was not. */
+            ? "Only changes Akeso read back afterwards are counted here. The ones that did not confirm are listed below."
+            : "Each change below was read back afterwards to confirm it held."
+          : driftSweeps.length
+            /* The last sweep being clean does not make the month clean, and
+               "every account agreed on every day" would be a plain untruth. */
+            ? `The last finished sweep found everything matching Stripe. Earlier in the month, ${driftSweeps.length} ${plural(driftSweeps.length, "sweep", "sweeps")} did not.`
+          : comparedNothing > 0 && comparedNothing === noVerdict
+            ? "No Stripe subscription matched any account your app reported, so nothing here is a verdict about your billing."
+          : noVerdict > 0
+            ? "Some sweeps finished without recording what they found, so this month cannot be called clean."
+            : fullyCovered
+              ? "Every account's access agreed with Stripe on every day that was checked."
+              : "On the days it ran, every account's access agreed with Stripe.";
 
-  const whatHappensNext = didNotRun
-    ? "Start the monitor again. Until it runs, this month cannot be called clean."
+  /* Split the way the report's next-step box is: the thing to do, then why.
+     Every statement ends with one, because a page a founder cannot act on is
+     a page they stop opening. */
+  /* Ordered by who is worse off. A mismatch is a person on the wrong side of
+     a paywall that Akeso has actually measured; an unconfirmed change is an
+     account Akeso cannot speak for; a gap is only a blind spot. */
+  const [whatHappensNext, whatHappensNextWhy] = didNotRun
+    ? ["Start the monitor again.", "Until it runs, this month cannot be called clean, only unmeasured."]
     : nothingMeasured
-      ? "Find out why the sweeps could not finish, usually a Stripe key or an app that was not reachable, then run one by hand."
-      : failures.length
-        ? "Look at the accounts listed as not confirmed. Akeso will not call them restored until it can read them back."
-        : daysWithNoSweep > 0
-          ? "Put the sweep on a schedule so the gaps close. Days without a sweep are days this statement cannot speak for."
-          : "Nothing needs you. Akeso keeps sweeping and only interrupts when a person is affected.";
+      ? ["Find out why the sweeps could not finish.", "Usually a Stripe key that stopped working or an app that was not reachable. Run one sweep by hand to see the error."]
+      : openMismatch && waitingForYou !== null
+        ? ["Check the removals waiting for you.", `Akeso never takes paid access away on its own. ${waitingForYou} ${plural(waitingForYou, "was", "were")} waiting as of the last sweep. Run npx akeso-check approvals to see what is waiting now and decide.`]
+        : openMismatch && changedSinceLastSweep
+          ? ["Run one more sweep to confirm the fixes.", `Akeso changed ${changedSinceLastSweep} account${changedSinceLastSweep === 1 ? "" : "s"} after the last sweep and read each one back, but nothing has been measured since.`]
+          : openMismatch
+            ? ["Look at the accounts that do not agree with Stripe.", `The last finished sweep${lastSweepDay ? ` on ${lastSweepDay}` : ""} found some, and nothing has been changed since. Run one sweep now to see whether it is still true.`]
+          : failures.length
+            ? ["Check the accounts that did not confirm.", "Akeso will not call them restored until it can read them back, so they are not counted above."]
+            : noVerdict > 0
+              ? ["Run one sweep by hand and read what it reports.", "Some sweeps finished without recording a verdict, so this month cannot be called clean on what is here."]
+              : daysWithNoSweep > 0
+                ? ["Put the sweep on a schedule so the gaps close.", "Days without a sweep are days this statement cannot speak for."]
+                : ["Nothing needs you.", "Akeso keeps sweeping and only interrupts when a person is affected."];
 
   return {
     month: target,
@@ -245,24 +439,36 @@ export function monthlyStatement(entries = [], { month, now = new Date() } = {})
     headline,
     subheadline,
     whatHappensNext,
+    whatHappensNextWhy,
     didNotRun,
     nothingMeasured,
+    openMismatch: Boolean(openMismatch),
+    removalsWaitingAtLastSweep: waitingForYou,
 
     sweeps: sweepEntries.length,
     sweepsClean: cleanSweeps.length,
+    sweepsComparedNothing: comparedNothing,
     sweepsCouldNotRun: couldNotRun.length,
-    sweepsWithDrift: ran.filter((entry) => entry.comparison.clean === false).length,
+    sweepsWithDrift: driftSweeps.length,
+    sweepsWithNoVerdict: noVerdict,
 
     accessRestored,
     accessRemoved,
     restoresVerified: confirmed.length,
     restoresFailed: notConfirmed.length,
+    /* Neither a restore nor a failure: your app was already right. Kept as its
+       own number so it cannot inflate either of the two beside it. */
+    changesNotNeeded: noChangeNeeded.length,
     failures,
 
     /* The three numbers. Separate keys, separate reasons, never a total. */
     unpaidAccessExposure,
     unpaidAccessExposureNote: unpaidAccessExposure === null
-      ? "Not measured. No sweep this month completed a reading, so there is nothing to average."
+      ? (ran.length
+        /* A month of finished sweeps that recorded no price is not a month
+           without sweeps, and saying so would blame the wrong thing. */
+        ? "Not measured. No finished sweep this month recorded a list price, so there is nothing to average."
+        : "Not measured. No sweep this month completed a reading, so there is nothing to average.")
       : `Average across the ${measuredExposure.length} sweep${measuredExposure.length === 1 ? "" : "s"} that measured it. This is the list price of access being given away, not money you will get back.`,
     unpaidAccessExposureSweeps: measuredExposure.length,
     directCostPrevented: null,
@@ -274,16 +480,20 @@ export function monthlyStatement(entries = [], { month, now = new Date() } = {})
     actions: restores.map((entry) => ({
       account: entry.account ?? null,
       direction: entry.direction ?? null,
-      confirmed: entry.result === "applied" && entry.verified === true,
+      confirmed: isConfirmed(entry),
+      /* Marked apart so the page does not put a warning next to a run in
+         which nothing was wrong. */
+      notNeeded: isNoChangeNeeded(entry),
       at: entry.at,
       line: actionReceipt(entry),
     })),
     coverage: {
       firstSweepAt: ran[0]?.at ?? null,
-      lastSweepAt: ran.at(-1)?.at ?? null,
+      lastSweepAt: lastFinished?.at ?? null,
       daysWithNoSweep,
       daysMeasured,
       daysInWindow,
+      daysAheadOfClock,
     },
     history: historyOf(all),
     generatedAt: asOf.toISOString(),
@@ -296,6 +506,19 @@ export function monthlyStatement(entries = [], { month, now = new Date() } = {})
    tamper alarm is worse than an honest "not checked". */
 function historyOf(entries) {
   if (!entries.length) return { checked: false, reason: "there is no history to check yet" };
+  /* A ledger line holding a bare `null` parses fine and is not an object. The
+     verifier reads `.kind` off every entry, so one of these used to end the
+     whole statement with a TypeError: a malformed history must be reported,
+     never a crash that hides the month. */
+  if (!entries.every((entry) => entry && typeof entry === "object")) {
+    return { checked: false, reason: "at least one entry is not a record at all, so the chain could not be checked" };
+  }
+  /* Entries built in memory carry no chain at all. Running the verifier over
+     them would report BROKEN, which is a false tamper alarm, and a false
+     tamper alarm is worse than an honest "not checked". */
+  if (typeof entries[0].hash !== "string") {
+    return { checked: false, reason: "these entries do not carry the ledger's chain, so nothing could be checked" };
+  }
   if ((entries[0].prev ?? null) !== null) {
     return { checked: false, reason: "this is part of the history, not the whole of it, so the chain could not be checked from the start" };
   }
@@ -306,6 +529,10 @@ function historyOf(entries) {
 /* -------------------------------------------------------------- rendering */
 
 const label = (text) => `  ${text.padEnd(36)}`;
+
+/* The value column already says "not measured", so the reason under it should
+   not open by saying it again. */
+const reasonOnly = (note) => note.replace(/^Not measured\.\s*/, "");
 
 /* The terminal version. Same facts, same order, same refusals as the page. */
 export function renderStatementText(statement) {
@@ -319,21 +546,26 @@ export function renderStatementText(statement) {
   lines.push(``);
 
   lines.push(`${label("Sweeps that finished")}: ${statement.sweeps === 0 ? "none" : statement.sweeps - statement.sweepsCouldNotRun}`);
-  lines.push(`${label("Of those, everything matched")}: ${statement.sweeps === 0 ? "not measured" : statement.sweepsClean}`);
+  /* Nothing measured means nothing to report, in both renderings. A "0" here
+     reads as a count of clean sweeps, which is a measurement nobody made. */
+  lines.push(`${label("Of those, everything matched")}: ${statement.didNotRun || statement.nothingMeasured ? "not measured" : statement.sweepsClean}`);
+  if (statement.sweepsWithDrift) lines.push(`${label("Of those, found a mismatch")}: ${statement.sweepsWithDrift}`);
+  if (statement.sweepsWithNoVerdict) lines.push(`${label("Of those, recorded no verdict")}: ${statement.sweepsWithNoVerdict}`);
   lines.push(`${label("Sweeps that could not run")}: ${statement.sweepsCouldNotRun}`);
   lines.push(`${label("Days with no finished sweep")}: ${statement.coverage.daysWithNoSweep} of ${statement.coverage.daysInWindow}`);
   lines.push(``);
-  lines.push(`${label("Access restored to paying people")}: ${statement.accessRestored}`);
-  lines.push(`${label("Access removed after cancelling")}: ${statement.accessRemoved}`);
+  lines.push(`${label("Access restored to paying customers")}: ${statement.accessRestored}`);
+  lines.push(`${label("Access removed after cancellation")}: ${statement.accessRemoved}`);
   lines.push(`${label("Confirmed by reading it back")}: ${statement.restoresVerified}`);
   lines.push(`${label("Changes that did not confirm")}: ${statement.restoresFailed}`);
+  if (statement.changesNotNeeded) lines.push(`${label("Changes that were not needed")}: ${statement.changesNotNeeded}`);
   lines.push(``);
   lines.push(`${label("Unpaid access exposure")}: ${statement.unpaidAccessExposure === null ? "not measured" : `${money(statement.unpaidAccessExposure)} a month at list price`}`);
-  lines.push(`    ${statement.unpaidAccessExposureNote}`);
+  lines.push(`    ${reasonOnly(statement.unpaidAccessExposureNote)}`);
   lines.push(`${label("Direct cost prevented")}: not measured`);
-  lines.push(`    ${statement.directCostPreventedNote}`);
+  lines.push(`    ${reasonOnly(statement.directCostPreventedNote)}`);
   lines.push(`${label("Revenue recovered")}: not measured`);
-  lines.push(`    ${statement.revenueRecoveredNote}`);
+  lines.push(`    ${reasonOnly(statement.revenueRecoveredNote)}`);
   lines.push(``);
   lines.push(`These three numbers are never added together. They answer different questions,`);
   lines.push(`and one figure made out of all three would overstate every one of them.`);
@@ -354,8 +586,9 @@ export function renderStatementText(statement) {
   lines.push(`History`);
   lines.push(`  ${historyLine(statement.history)}`);
   lines.push(``);
-  lines.push(`What happens next`);
+  lines.push(`Do this next`);
   lines.push(`  ${statement.whatHappensNext}`);
+  lines.push(`  ${statement.whatHappensNextWhy}`);
   lines.push(``);
   return lines.join("\n");
 }
@@ -372,8 +605,10 @@ function historyLine(history) {
 /* ------------------------------------------------------------------- page */
 
 /* The same page furniture as the Check report: same variables, same card,
-   same wordmark, same rows. A founder should not be able to tell that two
-   different files drew these. */
+   same wordmark, same rows, same next-step box. A founder should not be able
+   to tell that two different files drew these. The one declaration that
+   differs is `.nextBox p`, whose bottom margin in the report separates it from
+   a command block this page does not have. */
 export function renderStatementHtml(statement) {
   const row = ({ tone = "", mark = "", name, detail = "" }) =>
     `<div class="row${tone ? ` ${tone}` : ""}"><span class="mark">${mark}</span><span class="name">${escapeHtml(name)}</span><span class="detail">${escapeHtml(detail)}</span></div>`;
@@ -390,6 +625,20 @@ export function renderStatementHtml(statement) {
       name: "Of those, everything matched",
       detail: statement.didNotRun || statement.nothingMeasured ? "not measured" : String(statement.sweepsClean),
     }),
+    /* The disagreement gets its own line rather than being left as the gap
+       between two other numbers. It is the finding the founder is paying for. */
+    statement.sweepsWithDrift ? row({
+      tone: "warn",
+      mark: "!",
+      name: "Of those, found a mismatch",
+      detail: `${statement.sweepsWithDrift}, access that did not agree with Stripe`,
+    }) : null,
+    statement.sweepsWithNoVerdict ? row({
+      tone: "mute",
+      mark: "?",
+      name: "Of those, recorded no verdict",
+      detail: `${statement.sweepsWithNoVerdict}, so ${statement.sweepsWithNoVerdict === 1 ? "it does" : "they do"} not count as clean`,
+    }) : null,
     row({
       tone: statement.sweepsCouldNotRun ? "warn" : "",
       mark: statement.sweepsCouldNotRun ? "!" : "",
@@ -402,16 +651,16 @@ export function renderStatementHtml(statement) {
       name: "Days with no finished sweep",
       detail: `${statement.coverage.daysWithNoSweep} of ${statement.coverage.daysInWindow}`,
     }),
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   const doneRows = [
     row({
       tone: statement.accessRestored ? "ok" : "",
       mark: statement.accessRestored ? "✓" : "",
-      name: "Access restored to paying people",
+      name: "Access restored to paying customers",
       detail: String(statement.accessRestored),
     }),
-    row({ name: "Access removed after cancelling", detail: String(statement.accessRemoved) }),
+    row({ name: "Access removed after cancellation", detail: String(statement.accessRemoved) }),
     row({ name: "Confirmed by reading it back", detail: String(statement.restoresVerified) }),
     row({
       tone: statement.restoresFailed ? "warn" : "",
@@ -419,7 +668,11 @@ export function renderStatementHtml(statement) {
       name: "Changes that did not confirm",
       detail: statement.restoresFailed ? `${statement.restoresFailed}, not counted as restored` : "0",
     }),
-  ].join("\n");
+    statement.changesNotNeeded ? row({
+      name: "Changes that were not needed",
+      detail: `${statement.changesNotNeeded}, your app was already right`,
+    }) : null,
+  ].filter(Boolean).join("\n");
 
   const numberRows = [
     row({
@@ -432,15 +685,19 @@ export function renderStatementHtml(statement) {
     row({ tone: "mute", mark: "?", name: "Revenue recovered", detail: "not measured" }),
   ].join("\n");
 
+  /* Each reason names the number it belongs to: three bullets under three rows
+     are otherwise impossible to match up. */
   const numberNotes = [
-    statement.unpaidAccessExposureNote,
-    statement.directCostPreventedNote,
-    statement.revenueRecoveredNote,
-  ].map((note) => `<li>${escapeHtml(note)}</li>`).join("\n");
+    ["Unpaid access exposure", statement.unpaidAccessExposureNote],
+    ["Direct cost prevented", statement.directCostPreventedNote],
+    ["Revenue recovered", statement.revenueRecoveredNote],
+  ].map(([name, note]) => `<li>${escapeHtml(`${name}: ${note}`)}</li>`).join("\n");
 
-  const actionRows = statement.actions.map((action) =>
-    `<div class="row ${action.confirmed ? "ok" : "warn"}"><span class="mark">${action.confirmed ? "✓" : "!"}</span><span class="name wide">${escapeHtml(action.line)}</span></div>`,
-  ).join("\n");
+  const actionRows = statement.actions.map((action) => {
+    const tone = action.confirmed ? "ok" : action.notNeeded ? "mute" : "warn";
+    const mark = action.confirmed ? "✓" : action.notNeeded ? "" : "!";
+    return `<div class="row ${tone}"><span class="mark">${mark}</span><span class="name wide">${escapeHtml(action.line)}</span></div>`;
+  }).join("\n");
 
   const noteItems = statement.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("\n");
 
@@ -478,9 +735,11 @@ export function renderStatementHtml(statement) {
   .detail { color:var(--ink3); font-size:12.5px; text-align:right; max-width:40%; }
   ul.limits { margin:8px 0 0; padding-left:18px; color:var(--ink2); font-size:13.5px; }
   ul.limits li { margin-bottom:7px; }
-  .cta { margin-top:48px; border:1px solid var(--line); border-radius:12px; padding:24px 26px;
+  .nextBox { margin-top:34px; border:1px solid var(--line); border-radius:12px; padding:22px 24px;
     background:color-mix(in srgb, var(--ink) 2.5%, transparent); }
-  .cta h3 { margin:0 0 6px; font-size:16px; font-weight:600; } .cta p { margin:0; color:var(--ink2); font-size:13.5px; }
+  .nextBox .nextLabel { font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); }
+  .nextBox h3 { margin:6px 0 5px; font-size:16.5px; font-weight:600; letter-spacing:-.01em; }
+  .nextBox p { margin:0; color:var(--ink2); font-size:13.5px; max-width:58ch; }
   footer { margin-top:24px; text-align:center; font-size:12px; color:var(--ink3); }
 </style></head><body><div class="wrap">
   <div class="local">This statement is a file on your computer. Nothing was sent anywhere.</div>
@@ -516,7 +775,11 @@ ${statement.actions.length ? `
   <h2>History</h2>
   <ul class="limits"><li>${escapeHtml(historyLine(statement.history))}</li></ul>
 
-  <div class="cta"><h3>What happens next</h3><p>${escapeHtml(statement.whatHappensNext)}</p></div>
+  <div class="nextBox">
+    <div class="nextLabel">Do this next</div>
+    <h3>${escapeHtml(statement.whatHappensNext)}</h3>
+    <p>${escapeHtml(statement.whatHappensNextWhy)}</p>
+  </div>
   </div>
   <footer>Akeso Statement · ${escapeHtml(statement.monthLabel)} · ${statement.sweeps - statement.sweepsCouldNotRun} finished sweeps · local run</footer>
 </div></body></html>`;

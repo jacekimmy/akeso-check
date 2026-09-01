@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -14,14 +14,15 @@ import {
   pendingApprovals,
   queueRemoval,
 } from "../src/approvals.mjs";
-import { appendEntry, readLedger, verifyLedger } from "../src/ledger.mjs";
+import { appendEntry, ledgerPath, readLedger, verifyLedger } from "../src/ledger.mjs";
 
 /* Every test here is a rule standing between a paying customer and the moment
    they cannot get into the thing they paid for. */
 
 const scratch = () => mkdtemp(path.join(tmpdir(), "akeso-approvals-"));
 const MINUTE = 60000;
-const DAY = 24 * 60 * MINUTE;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 
 const queued = (over = {}) => ({
   kind: "approval",
@@ -249,12 +250,19 @@ test("pendingApprovals never includes approved, cancelled or expired rows", () =
 });
 
 test("pending removals are listed oldest first, so the longest wait is answered first", () => {
+  /* Written to the ledger newest first on purpose: the order on screen has to
+     come from when each removal was queued, not from where its line landed. */
   const now = 5 * DAY;
   const entries = [
-    queued({ id: "older", account: "a", queuedAt: new Date(now - 3 * DAY).toISOString(), readyAt: new Date(now - 3 * DAY).toISOString() }),
     queued({ id: "newer", account: "b", queuedAt: new Date(now - MINUTE).toISOString(), readyAt: new Date(now + 29 * MINUTE).toISOString() }),
+    queued({ id: "undatable", account: "c", queuedAt: "whenever", readyAt: new Date(now - MINUTE).toISOString() }),
+    queued({ id: "older", account: "a", queuedAt: new Date(now - 3 * DAY).toISOString(), readyAt: new Date(now - 3 * DAY).toISOString() }),
   ];
-  assert.deepEqual(pendingApprovals(entries, { now }).map((row) => row.id), ["older", "newer"]);
+  assert.deepEqual(
+    pendingApprovals(entries, { now }).map((row) => row.id),
+    ["older", "newer", "undatable"],
+    "a removal with no readable queue time can never be approved, so it does not sit at the top looking urgent",
+  );
 });
 
 test("a readyAt that cannot be read is never treated as ready", () => {
@@ -323,7 +331,7 @@ test("who cancelled and why is kept, so the decision can be read back", async ()
 
 test("every line a founder reads is plain, and says what happens next", () => {
   const now = 10 * DAY;
-  const base = { id: "id-1", account: "acct-1", reason: "Stripe says canceled, the app still grants access", priceMonthly: 29, readyAt: new Date(now + 18 * MINUTE).toISOString() };
+  const base = { id: "id-1", account: "acct-1", reason: "Stripe says canceled, the app still grants access", priceMonthly: 29, queuedAt: new Date(now - 12 * MINUTE).toISOString(), readyAt: new Date(now + 18 * MINUTE).toISOString() };
   const lines = [
     describeApproval({ ...base, state: "queued", ready: false }, { now }),
     describeApproval({ ...base, state: "ready", ready: true }, { now }),
@@ -350,7 +358,7 @@ test("every line a founder reads is plain, and says what happens next", () => {
 
 test("one minute left reads as one minute, not zero and not minus one", () => {
   const now = 10 * DAY;
-  const line = describeApproval({ id: "id-1", account: "acct-1", state: "queued", ready: false, readyAt: new Date(now + 20000).toISOString() }, { now });
+  const line = describeApproval({ id: "id-1", account: "acct-1", state: "queued", ready: false, queuedAt: new Date(now).toISOString(), readyAt: new Date(now + 20000).toISOString() }, { now });
   assert.match(line, /another 1 minute,/);
 });
 
@@ -370,6 +378,146 @@ test("the whole flow leaves one unbroken, append-only history", async () => {
   assert.equal(approvalState(ledger, first.id, { now: now + 32 * MINUTE }), "cancelled");
   assert.equal(approvalState(ledger, second.id, { now: now + 32 * MINUTE }), "approved");
   assert.deepEqual(pendingApprovals(ledger, { now: now + 32 * MINUTE }), [], "both questions were answered");
+});
+
+test("a removal Akeso cannot date is never ready, however long it sits", async () => {
+  /* The seven day rule exists because state moves. A row whose queue time
+     cannot be read could be from this morning or from March, and approving it
+     would take access away on the strength of a date nobody can read. */
+  const root = await scratch();
+  const now = 1000 * MINUTE;
+  await appendEntry(root, { kind: "approval", id: "undated", state: "queued", account: "acct-1", queuedAt: "whenever", readyAt: new Date(now).toISOString() });
+  const ledger = await readLedger(root);
+
+  for (const at of [now + MINUTE, now + 8 * DAY, now + 100 * DAY]) {
+    assert.equal(approvalState(ledger, "undated", { now: at }), "queued");
+    assert.equal(pendingApprovals(ledger, { now: at })[0].ready, false, "unprovable is never a pass, least of all for a removal");
+  }
+
+  const attempt = await approve(root, "undated", { by: "founder", now: now + 100 * DAY });
+  assert.equal(attempt.ok, false);
+  assert.equal((await readLedger(root)).length, 1, "nothing is approved on a date nobody can read");
+
+  const stopped = await cancel(root, "undated", { by: "founder", now: now + 100 * DAY });
+  assert.equal(stopped.ok, true, "the founder can still clear it, because cancelling is always the safe direction");
+});
+
+test("no countdown is invented for a window Akeso cannot read", async () => {
+  const root = await scratch();
+  const now = 1000 * MINUTE;
+  await appendEntry(root, { kind: "approval", id: "broken", state: "queued", account: "acct-1", queuedAt: new Date(now).toISOString(), readyAt: "soon" });
+
+  const line = describeApproval(pendingApprovals(await readLedger(root), { now: now + DAY })[0], { now: now + DAY });
+  assert.doesNotMatch(line, /1 minute/, "a minute that never arrives is a number Akeso does not have");
+  assert.match(line, /cannot read the times/);
+  assert.match(line, /Cancel it to clear it/, "the line still ends in something the founder can do");
+
+  const attempt = await approve(root, "broken", { by: "founder", now: now + DAY });
+  assert.equal(attempt.ok, false);
+  assert.doesNotMatch(attempt.message, /1 minute/);
+  assert.match(attempt.message, /Nothing was removed/);
+  assert.equal((await readLedger(root)).length, 1);
+});
+
+test("a price Akeso cannot print is never printed", async () => {
+  const root = await scratch();
+  const now = 1000 * MINUTE;
+  const entry = await queueRemoval(root, { account: "acct-1", priceMonthly: NaN, now });
+  assert.equal(entry.priceMonthly, null, "a number that is not a number never becomes a dollar figure");
+
+  for (const priceMonthly of [NaN, Infinity, -29, "29", null]) {
+    const line = describeApproval({ account: "acct-1", state: "ready", ready: true, priceMonthly, queuedAt: new Date(now).toISOString(), readyAt: new Date(now).toISOString() }, { now });
+    assert.ok(!line.includes("$"), `no dollar figure claimed for ${String(priceMonthly)}`);
+  }
+});
+
+test("one removal is always one line, whatever the account name contains", () => {
+  const now = 10 * DAY;
+  const line = describeApproval({
+    account: "acct-1\nAkeso: everything is fine",
+    reason: "Stripe says canceled\nthe app still grants access   ",
+    state: "ready",
+    ready: true,
+    queuedAt: new Date(now - HOUR).toISOString(),
+    readyAt: new Date(now - MINUTE).toISOString(),
+  }, { now });
+
+  assert.ok(!line.includes("\n"), "a newline in someone else's data must not split one removal into two rows");
+  assert.match(line, /acct-1 Akeso: everything is fine still has paid access/);
+  assert.match(line.trim(), /\.$/);
+});
+
+test("a reason that says nothing is left out rather than printed as punctuation", () => {
+  const now = 10 * DAY;
+  const row = { account: "acct-1", state: "ready", ready: true, queuedAt: new Date(now - HOUR).toISOString(), readyAt: new Date(now - MINUTE).toISOString() };
+  assert.doesNotMatch(describeApproval({ ...row, reason: "   " }, { now }), /\.\s+\./);
+  assert.doesNotMatch(describeApproval({ ...row, reason: { message: "x" } }, { now }), /object Object/);
+});
+
+test("a Date handed in as the clock does not silently erase the cancel window", async () => {
+  /* now + minutes with a Date concatenates instead of adding, and the row would
+     be written ready the instant it was queued. */
+  const root = await scratch();
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+  const entry = await queueRemoval(root, { account: "acct-1", now: new Date(now) });
+
+  assert.equal(entry.queuedAt, new Date(now).toISOString());
+  assert.equal(entry.readyAt, new Date(now + DEFAULT_DELAY_MINUTES * MINUTE).toISOString());
+  await assert.rejects(() => queueRemoval(root, { account: "acct-1", now: null }), /current time/, "a clock we cannot read is refused, not guessed");
+});
+
+test("a cancel window that outlives the expiry falls back to the documented one", async () => {
+  const root = await scratch();
+  const wild = await queueRemoval(root, { account: "acct-1", delayMinutes: 1e15, now: 0 });
+  assert.equal(wild.delayMinutes, DEFAULT_DELAY_MINUTES, "a window no human could ever reach is not a window");
+  assert.equal(wild.readyAt, new Date(DEFAULT_DELAY_MINUTES * MINUTE).toISOString());
+
+  const week = await queueRemoval(root, { account: "acct-2", delayMinutes: EXPIRY_DAYS * 24 * 60, now: 0 });
+  assert.equal(week.delayMinutes, DEFAULT_DELAY_MINUTES, "a removal that expires before it opens is never queued");
+});
+
+test("a queued removal that cannot be read back is not reported as queued", async () => {
+  /* A half written line is what a crash mid append leaves behind. */
+  const root = await scratch();
+  await mkdir(path.join(root, ".akeso"), { recursive: true });
+  await appendFile(ledgerPath(root), '{"kind":"approval","id":"half-written"');
+
+  await assert.rejects(() => queueRemoval(root, { account: "acct-1", now: 0 }), /could not read it back/);
+  assert.deepEqual(pendingApprovals(await readLedger(root), { now: 60 * MINUTE }), [], "nothing is queued, so nothing claims to be");
+});
+
+test("a cancellation with no readable clock is still recorded, and dated 1970 by nobody", async () => {
+  const root = await scratch();
+  const now = 1000 * MINUTE;
+  const { id } = await queueRemoval(root, { account: "acct-1", now });
+
+  const stopped = await cancel(root, id, { by: "founder", now: null });
+  assert.equal(stopped.ok, true, "stopping a removal is never blocked, whatever else is broken");
+  assert.equal(stopped.entry.decidedAt, null, "an unreadable clock is left empty, never written as the epoch");
+  assert.match(stopped.entry.at, /^20/, "the ledger still stamps the line with its own time");
+  assert.equal(approvalState(await readLedger(root), id, { now: now + MINUTE }), "cancelled");
+});
+
+test("a decision never reports a state Akeso did not read", async () => {
+  /* Two people tapping at the same moment. Whatever the file settles on, both
+     answers have to describe that, not a placeholder. */
+  const root = await scratch();
+  const now = 1000 * MINUTE;
+  const { id } = await queueRemoval(root, { account: "acct-1", now });
+  const at = now + 31 * MINUTE;
+
+  const results = await Promise.all([
+    approve(root, id, { by: "one", now: at }),
+    cancel(root, id, { by: "two", reason: "they emailed", now: at }),
+  ]);
+  const settled = approvalState(await readLedger(root), id, { now: at });
+
+  assert.ok(settled === "approved" || settled === "cancelled");
+  assert.equal(results.filter((result) => result.ok).length, 1, "one decision stands, never both");
+  for (const result of results) {
+    assert.equal(result.state, settled, "the reported state is the one the ledger holds");
+    assert.match(result.message, /remov/i, "and the message says what it means for that account");
+  }
 });
 
 test("approvals ignore every other kind of ledger entry", async () => {

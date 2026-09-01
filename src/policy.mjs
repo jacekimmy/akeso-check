@@ -41,12 +41,17 @@ export const DEFAULT_POLICY = {
    Returns null for "do not conclude", which callers must handle as its own
    case rather than as a false. */
 export function entitledUnder(status, policy = DEFAULT_POLICY) {
+  /* Whatever arrives here came from an API response, so it can be any shape at
+     all. Two ways that used to hurt: a value whose toString throws took the
+     whole sweep down, and a key like "constructor" or "toString" resolved
+     against the prototype chain and returned a function that read as a
+     meaning. Both now fall through to "no conclusion". */
+  if (typeof status !== "string") return null;
+  if (!Object.hasOwn(STATUS_MEANING, status)) return null;
   if ((policy.neverConclude || []).includes(status)) return null;
-  const meaning = STATUS_MEANING[status];
-  if (!meaning) return null; /* an unknown status is never guessed at */
   if (status === "past_due") return policy.entitledWhilePastDue;
   if (status === "paused") return policy.entitledWhilePaused;
-  return meaning.entitled;
+  return STATUS_MEANING[status].entitled;
 }
 
 /* The plain-English description of the policy in force, printed before a sweep

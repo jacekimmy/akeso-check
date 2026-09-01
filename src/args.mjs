@@ -27,7 +27,10 @@ export function positionalPath(args, subcommand = null) {
     const arg = args[i];
     if (VALUE_FLAGS.has(arg)) { i += 1; continue; } /* skip the flag AND its value */
     if (arg.startsWith("-")) continue;
-    if (arg === subcommand || SUBCOMMANDS.has(arg)) continue;
+    /* The subcommand is only ever the FIRST argument. Skipping it wherever it
+       appears would swallow a directory that happens to share its name, and a
+       founder with a folder called "check" should still be able to point at it. */
+    if (i === 0 && (arg === subcommand || SUBCOMMANDS.has(arg))) continue;
     return arg;
   }
   return null;

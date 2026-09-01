@@ -179,6 +179,6 @@ test("schema changes are written for a human to run, never executed", () => {
   const plan = buildFixPlan({ detection: detection() });
   const migration = plan.files.find((file) => file.path.endsWith(".sql"));
   assert.ok(migration.manual, "the SQL file is marked as the founder's to run");
-  assert.match(migration.contents, /paste this into your database/);
+  assert.match(migration.contents, /paste this into your database/i);
   assert.ok(!/drop |delete from/i.test(migration.contents), "the migration only ever adds");
 });

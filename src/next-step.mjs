@@ -78,6 +78,49 @@ export function nextStep({ ledger = [], detection = null, lifecycle = null, sand
 
   /* Grade A. The code is right; the question becomes whether it stays right
      and whether today's live data agrees. */
+  const sweep = lastOfKind(ledger, "sweep");
+
+  if (sweep?.couldNotRun) {
+    return {
+      stage: "sweep-could-not-run",
+      headline: "The last check of your real customers could not run.",
+      why: `It stopped with: ${sweep.couldNotRun}. That is a problem with the run, not a verdict about your billing.`,
+      command: "npx akeso-check monitor --entitlements-url http://localhost:3000/api/akeso/entitlements",
+    };
+  }
+
+  if (sweep && (sweep.comparison?.counts?.matched ?? 0) === 0) {
+    /* The most common real-world snag, and one a founder cannot guess at:
+       Stripe and the app disagree about what an account is called. */
+    return {
+      stage: "nothing-matched",
+      headline: "Nothing could be compared yet, so nothing is proven about your customers.",
+      why: "No Stripe subscription matched any account your app reported. Stripe has to carry the same account id your app uses, in client_reference_id or in the subscription's metadata.",
+      command: null,
+    };
+  }
+
+  if (sweep) {
+    const clean = sweep.comparison?.clean;
+    const queued = sweep.drift?.removalsQueued || 0;
+    if (queued > 0) {
+      return {
+        stage: "approvals-waiting",
+        headline: `${queued} removal${queued === 1 ? " is" : "s are"} waiting for your yes.`,
+        why: "Akeso restores access on its own, but it never takes access away without a person deciding. Nothing has happened to those accounts.",
+        command: "npx akeso-check approvals",
+      };
+    }
+    return {
+      stage: "watching",
+      headline: clean ? "Everything matches right now." : "The last run found accounts that do not match.",
+      why: clean
+        ? "Nothing to do. Run this again whenever you deploy, or on a schedule, and read the month with the statement."
+        : "Look at the list above and decide what to do about each one.",
+      command: clean ? "npx akeso-check statement" : "npx akeso-check approvals",
+    };
+  }
+
   return {
     stage: "monitor",
     headline: fix ? "The repair holds. Next: check that today's real customers match." : "Your billing code passes. Next: check that today's real customers match.",

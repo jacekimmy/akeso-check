@@ -1,5 +1,4 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { lastOfKind } from "./ledger.mjs";
 
 /* WHEN Akeso looks. Nothing else lives here.
  *
@@ -62,7 +61,52 @@ function requireMs(value, label) {
   return ms;
 }
 
+function requirePositive(value, label) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new TypeError(`schedule: ${label} must be a finite number greater than zero`);
+  }
+  return value;
+}
+
+function requireAtLeastZero(value, label) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new TypeError(`schedule: ${label} must be a finite number of zero or more`);
+  }
+  return value;
+}
+
 const iso = (ms) => new Date(ms).toISOString();
+
+/* One place where a cadence is read and checked.
+ *
+ * An unreadable cadence used to sail straight through as NaN, and a NaN
+ * deadline is never overdue: dueWork answered "nothing is due" and nextRunAt
+ * crashed on the date it tried to build. False quiet caused by our own bad
+ * configuration is the one answer this product may never give, so a cadence
+ * that cannot be read is refused here instead of being guessed at. */
+function cadenceOf(cadence) {
+  const fullSweepMinutes = requirePositive(cadence?.fullSweepMinutes ?? CADENCE.fullSweepMinutes, "cadence.fullSweepMinutes");
+  const deepSweepHours = requirePositive(cadence?.deepSweepHours ?? CADENCE.deepSweepHours, "cadence.deepSweepHours");
+  const afterDeployDelaySeconds = requireAtLeastZero(cadence?.afterDeployDelaySeconds ?? CADENCE.afterDeployDelaySeconds, "cadence.afterDeployDelaySeconds");
+  return {
+    fullSweepMinutes,
+    deepSweepHours,
+    afterDeployDelaySeconds,
+    fullMs: fullSweepMinutes * MINUTE,
+    deepMs: deepSweepHours * HOUR,
+    deployMs: afterDeployDelaySeconds * 1000,
+  };
+}
+
+/* A ledger line of literal `null` parses to a null entry, and a row that is not
+   an object cannot be read as a sweep or a deploy. Those rows are counted as
+   untrusted rather than skipped in silence, and never as coverage. */
+function rowsOf(entries) {
+  if (entries === null || entries === undefined) return { rows: [], unusable: 0 };
+  if (!Array.isArray(entries)) throw new TypeError("schedule: entries must be an array of ledger entries");
+  const rows = entries.filter((row) => row && typeof row === "object");
+  return { rows, unusable: entries.length - rows.length };
+}
 
 /* ---------------------------------------------------------- the folding */
 
@@ -84,36 +128,53 @@ const deepSweep = (entry) => completedSweep(entry) && entry.deep === true;
    the future cannot prove it ran, and letting it satisfy the cadence would
    mean one bad clock buys hours of false quiet. */
 function fold(entries, nowMs) {
+  const { rows, unusable } = rowsOf(entries);
   const successTimes = [];
   let attempts = 0;
   let failed = 0;
-  let ignored = 0;
+  let ignored = unusable;
   let firstAttemptAt = null;
   let lastAttemptAt = null;
   let lastAttemptCouldNotRun = null;
   let lastDeepAt = null;
+  let lastDeployAt = null;
+  let lastDeployRef = null;
 
-  for (const entry of entries || []) {
+  for (const entry of rows) {
+    /* The newest deploy is found by its timestamp, not by its position in the
+       file. Taking the last deploy line meant a single deploy stamped in the
+       future, or stamped with something unreadable, silently cancelled the
+       re-check a real deploy had already earned, and cancelled it without
+       saying so. */
+    if (entry.kind === "deploy") {
+      const at = msOf(entry.at);
+      if (at === null || at > nowMs) { ignored += 1; continue; }
+      if (lastDeployAt === null || at > lastDeployAt) { lastDeployAt = at; lastDeployRef = entry.ref ?? null; }
+      continue;
+    }
     if (!isSweepAttempt(entry)) continue;
     const at = msOf(entry.at);
     if (at === null || at > nowMs) { ignored += 1; continue; }
 
+    const finished = completedSweep(entry);
     attempts += 1;
     if (firstAttemptAt === null || at < firstAttemptAt) firstAttemptAt = at;
-    if (lastAttemptAt === null || at >= lastAttemptAt) {
+    if (lastAttemptAt === null || at > lastAttemptAt) {
       lastAttemptAt = at;
-      lastAttemptCouldNotRun = Boolean(entry.couldNotRun);
+      lastAttemptCouldNotRun = !finished;
+    } else if (at === lastAttemptAt && !finished) {
+      /* Two attempts sharing the newest instant must not give two different
+         answers depending on which line was written first. If either of them
+         did not finish, that is the fact worth surfacing. */
+      lastAttemptCouldNotRun = true;
     }
-    if (!completedSweep(entry)) { failed += 1; continue; }
+    if (!finished) { failed += 1; continue; }
     successTimes.push(at);
     if (deepSweep(entry) && (lastDeepAt === null || at > lastDeepAt)) lastDeepAt = at;
   }
 
   successTimes.sort((a, b) => a - b);
   const lastFullAt = successTimes.at(-1) ?? null;
-
-  const deploy = lastOfKind(entries || [], "deploy");
-  const deployAt = deploy ? msOf(deploy.at) : null;
 
   return {
     nowMs,
@@ -127,21 +188,26 @@ function fold(entries, nowMs) {
     lastFullAt,
     lastDeepAt,
     successTimes,
-    /* Only failures since the last completed sweep matter to a reader: they
-       are the ones standing between them and current information. */
-    failedSinceLastSuccess: (entries || []).filter((entry) => {
-      if (!isSweepAttempt(entry) || !entry.couldNotRun) return false;
+    /* Only attempts since the last completed sweep matter to a reader: they are
+       the ones standing between them and current information. An attempt that
+       recorded no comparison counts here too, because it left the reader just
+       as uninformed as one that openly could not run. */
+    failedSinceLastSuccess: rows.filter((entry) => {
+      if (!isSweepAttempt(entry) || completedSweep(entry)) return false;
       const at = msOf(entry.at);
       return at !== null && at <= nowMs && (lastFullAt === null || at > lastFullAt);
     }).length,
-    lastDeployAt: deployAt !== null && deployAt <= nowMs ? deployAt : null,
-    lastDeployRef: deploy?.ref ?? null,
+    lastDeployAt,
+    lastDeployRef,
   };
 }
 
-const fullMsOf = (cadence) => (cadence?.fullSweepMinutes ?? CADENCE.fullSweepMinutes) * MINUTE;
-const deepMsOf = (cadence) => (cadence?.deepSweepHours ?? CADENCE.deepSweepHours) * HOUR;
-const deployMsOf = (cadence) => (cadence?.afterDeployDelaySeconds ?? CADENCE.afterDeployDelaySeconds) * 1000;
+/* The window coverage is actually measured over: never earlier than the first
+   attempt, because Akeso cannot report on time it was not watching. */
+function gapAnchor(folded, nowMs, sinceDays) {
+  if (folded.firstAttemptAt === null) return null;
+  return Math.max(nowMs - sinceDays * 24 * HOUR, folded.firstAttemptAt);
+}
 
 /* A deploy is re-checked after a short settling delay rather than instantly,
    because the first seconds of a deploy are the seconds most likely to answer
@@ -153,6 +219,7 @@ const deployRecheckPending = (folded) => folded.lastDeployAt !== null && (folded
 
 export function dueWork(entries = [], { now = Date.now(), cadence = CADENCE } = {}) {
   const nowMs = requireMs(now, "now");
+  const rhythm = cadenceOf(cadence);
   const folded = fold(entries, nowMs);
   const reasons = [];
   let full = false;
@@ -173,19 +240,19 @@ export function dueWork(entries = [], { now = Date.now(), cadence = CADENCE } = 
       });
   } else {
     const age = nowMs - folded.lastFullAt;
-    if (age >= fullMsOf(cadence)) {
+    if (age >= rhythm.fullMs) {
       full = true;
       reasons.push({
         work: "full",
         code: "cadence_due",
-        overdueMinutes: Math.round((age - fullMsOf(cadence)) / MINUTE),
-        detail: `The last completed check was ${ago(age)}, and Akeso checks every ${cadence?.fullSweepMinutes ?? CADENCE.fullSweepMinutes} minutes.`,
+        overdueMinutes: Math.round((age - rhythm.fullMs) / MINUTE),
+        detail: `The last completed check was ${ago(age)}, and Akeso checks every ${rhythm.fullSweepMinutes} minutes.`,
       });
     }
   }
 
-  if (deployRecheckPending(folded) && nowMs >= folded.lastDeployAt + deployMsOf(cadence)) {
-    if (!full) full = true;
+  if (deployRecheckPending(folded) && nowMs >= folded.lastDeployAt + rhythm.deployMs) {
+    full = true;
     reasons.push({
       work: "full",
       code: "after_deploy",
@@ -202,13 +269,13 @@ export function dueWork(entries = [], { now = Date.now(), cadence = CADENCE } = 
     });
   } else {
     const age = nowMs - folded.lastDeepAt;
-    if (age >= deepMsOf(cadence)) {
+    if (age >= rhythm.deepMs) {
       deep = true;
       reasons.push({
         work: "deep",
         code: "deep_cadence_due",
-        overdueMinutes: Math.round((age - deepMsOf(cadence)) / MINUTE),
-        detail: `The last deep check was ${ago(age)}, and Akeso runs one every ${cadence?.deepSweepHours ?? CADENCE.deepSweepHours} hours.`,
+        overdueMinutes: Math.round((age - rhythm.deepMs) / MINUTE),
+        detail: `The last deep check was ${ago(age)}, and Akeso runs one every ${rhythm.deepSweepHours} hours.`,
       });
     }
   }
@@ -220,12 +287,13 @@ export function dueWork(entries = [], { now = Date.now(), cadence = CADENCE } = 
    in the past, because a caller printing a past time would look broken. */
 export function nextRunAt(entries = [], { now = Date.now(), cadence = CADENCE } = {}) {
   const nowMs = requireMs(now, "now");
+  const rhythm = cadenceOf(cadence);
   if (dueWork(entries, { now: nowMs, cadence }).full) return iso(nowMs);
 
   const folded = fold(entries, nowMs);
   const candidates = [];
-  if (folded.lastFullAt !== null) candidates.push(folded.lastFullAt + fullMsOf(cadence));
-  if (deployRecheckPending(folded)) candidates.push(folded.lastDeployAt + deployMsOf(cadence));
+  if (folded.lastFullAt !== null) candidates.push(folded.lastFullAt + rhythm.fullMs);
+  if (deployRecheckPending(folded)) candidates.push(folded.lastDeployAt + rhythm.deployMs);
   /* Nothing due and nothing to schedule from cannot happen, but a fallback of
      "now" is the honest one: it never claims coverage we cannot show. */
   return iso(candidates.length ? Math.min(...candidates) : nowMs);
@@ -246,12 +314,15 @@ export function nextRunAt(entries = [], { now = Date.now(), cadence = CADENCE } 
  * describeSchedule does. */
 export function coverageGaps(entries = [], { now = Date.now(), cadence = CADENCE, sinceDays = 30 } = {}) {
   const nowMs = requireMs(now, "now");
+  const stride = cadenceOf(cadence).fullMs;
+  /* A window that cannot be read would silently become "no gaps found", which
+     reads to a founder as a clean month. Refused rather than guessed. */
+  requirePositive(sinceDays, "sinceDays");
   const folded = fold(entries, nowMs);
-  if (folded.firstAttemptAt === null) return [];
+  const anchor = gapAnchor(folded, nowMs, sinceDays);
+  if (anchor === null) return [];
 
-  const stride = fullMsOf(cadence);
   const grace = GAP_GRACE_MINUTES * MINUTE;
-  const anchor = Math.max(nowMs - sinceDays * 24 * HOUR, folded.firstAttemptAt);
   const before = folded.successTimes.filter((at) => at < anchor).at(-1) ?? null;
   const inside = folded.successTimes.filter((at) => at >= anchor);
 
@@ -288,6 +359,11 @@ export async function runLoop({
   onError = null,
 } = {}) {
   if (typeof tick !== "function") throw new TypeError("schedule: runLoop needs a tick function to call");
+  /* An interval of zero, or a NaN from a mis-parsed command line flag, makes
+     setTimeout return almost immediately, and the loop that was meant to run
+     hourly hammers Stripe and the founder's app instead. Pacing ourselves by
+     luck is exactly what the sleep guard below refuses, so refuse it here. */
+  requirePositive(intervalMs, "intervalMs");
   const clock = typeof now === "function" ? now : () => requireMs(now, "now");
 
   const errors = [];
@@ -295,15 +371,36 @@ export async function runLoop({
   let stoppedBecause = "asked_to_stop";
   const startedAt = iso(requireMs(clock(), "now"));
 
+  /* Once monitoring has started, a clock that stops answering must not throw
+     away the run. The time is left null and said to be unknown, never filled
+     in with a plausible one. */
+  const nowIso = () => {
+    try {
+      return iso(requireMs(clock(), "now"));
+    } catch {
+      return null;
+    }
+  };
+
   const record = (phase, error) => {
     const message = error?.message || String(error);
-    const at = iso(requireMs(clock(), "now"));
+    const at = nowIso();
     errors.push({ tick: ticks, at, phase, message });
     /* Reported, never swallowed. With no handler wired the founder still sees
        it, and the line says the loop is continuing so a single failure does
        not read as the monitor being dead. */
-    if (onError) onError(error, { tick: ticks, at, phase });
-    else console.error(`A scheduled check did not finish: ${message}. Akeso is still running and will try again at the next interval.`);
+    try {
+      if (onError) onError(error, { tick: ticks, at, phase });
+      else console.error(`A scheduled check did not finish: ${message}. Akeso is still running and will try again at the next interval.`);
+    } catch (reportingError) {
+      /* onError is where the alerting gets wired, and alerting breaks. A
+         throw from it used to escape the loop and end the monitoring, which
+         made the reporting of a bad night more dangerous than the bad night. */
+      errors.push({ tick: ticks, at, phase: "report", message: reportingError?.message || String(reportingError) });
+      try {
+        console.error(`A scheduled check did not finish: ${message}. Reporting that failure also failed. Akeso is still running and will try again at the next interval.`);
+      } catch { /* Nowhere left to say it. Keep monitoring; the run record still carries both errors. */ }
+    }
   };
 
   const stopRequested = () => {
@@ -321,7 +418,7 @@ export async function runLoop({
   while (!stopRequested()) {
     ticks += 1;
     try {
-      await tick({ tick: ticks, at: iso(requireMs(clock(), "now")) });
+      await tick({ tick: ticks, at: nowIso() });
     } catch (error) {
       record("tick", error);
     }
@@ -339,7 +436,7 @@ export async function runLoop({
     }
   }
 
-  return { ticks, errors, stoppedBecause, startedAt, endedAt: iso(requireMs(clock(), "now")) };
+  return { ticks, errors, stoppedBecause, startedAt, endedAt: nowIso() };
 }
 
 /* ------------------------------------------------------------- the words */
@@ -348,15 +445,22 @@ export async function runLoop({
    command layer prints and never recomputes. */
 export function scheduleState(entries = [], { now = Date.now(), cadence = CADENCE, sinceDays = 30 } = {}) {
   const nowMs = requireMs(now, "now");
+  const rhythm = cadenceOf(cadence);
+  requirePositive(sinceDays, "sinceDays");
   const folded = fold(entries, nowMs);
   const due = dueWork(entries, { now: nowMs, cadence });
   const next = nextRunAt(entries, { now: nowMs, cadence });
-  const overdue = folded.lastFullAt === null ? null : Math.max(0, nowMs - folded.lastFullAt - fullMsOf(cadence));
+  const overdue = folded.lastFullAt === null ? null : Math.max(0, nowMs - folded.lastFullAt - rhythm.fullMs);
+  const windowFrom = gapAnchor(folded, nowMs, sinceDays);
 
   return {
     now: iso(nowMs),
     cadence,
     sinceDays,
+    /* The period the gaps below were actually measured over. Without it a
+       caller cannot tell a genuinely clean month from a project installed
+       twenty minutes ago, and would print the same sentence for both. */
+    gapWindowFrom: windowFrom === null ? null : iso(windowFrom),
     attempts: folded.attempts,
     completed: folded.completed,
     failed: folded.failed,
@@ -388,17 +492,27 @@ export function describeSchedule(state) {
   const nowMs = msOf(state.now) ?? Date.now();
   const lines = [];
 
+  /* Entries Akeso threw away are said out loud on every path. They used to be
+     mentioned only in the middle path, so a ledger holding nothing but a
+     future stamped sweep read as a clean "nothing has run yet" and the
+     discarded evidence was never mentioned at all. */
+  const untrusted = () => {
+    if (!state.ignoredTimestamps) return [];
+    const many = state.ignoredTimestamps > 1;
+    return [`${countWord(state.ignoredTimestamps, "entry", "entries")} in the history ${many ? "carry times" : "carries a time"} Akeso cannot trust, so ${many ? "they were" : "it was"} not counted. Akeso checks again rather than treat that time as covered.`];
+  };
+
   if (!state.attempts) {
     lines.push("Akeso has not checked your customers yet.");
     lines.push("Nothing is being watched until the first check runs. Start the monitor and it begins immediately.");
-    return lines;
+    return [...lines, ...untrusted()];
   }
 
   if (!state.completed) {
     lines.push(`Akeso has tried to check ${countWord(state.attempts, "time")} and none of them finished.`);
     lines.push("That is a problem with Akeso's own run, not a verdict about your app. Nothing here is being watched until one check finishes.");
     lines.push("The next attempt is due now.");
-    return lines;
+    return [...lines, ...untrusted()];
   }
 
   lines.push(`Akeso last checked your customers ${ago(nowMs - msOf(state.lastSweepAt))}, at ${clockText(state.lastSweepAt)}.`);
@@ -422,21 +536,35 @@ export function describeSchedule(state) {
   }
 
   if (state.failedSinceLastSuccess) {
-    lines.push(`${countWord(state.failedSinceLastSuccess, "check")} since then could not run, so the newest information you have is from the last one that finished.`);
+    lines.push(`${countWord(state.failedSinceLastSuccess, "check")} since then did not finish, so the newest information you have is from the last one that did. Akeso keeps trying at the usual interval.`);
   }
-  if (state.ignoredTimestamps) {
-    lines.push(`${countWord(state.ignoredTimestamps, "entry", "entries")} in the history carry a time Akeso cannot trust, so they were not counted as checks.`);
-  }
+  lines.push(...untrusted());
+
+  /* The window the gaps were measured over, in the reader's words.
+   *
+   * "No gaps in the last 30 days" used to be printed for a project installed
+   * twenty minutes ago, which is a claim about 29 days Akeso never watched.
+   * The sentence now only ever covers the time actually measured. */
+  const windowFrom = msOf(state.gapWindowFrom ?? state.firstAttemptAt);
+  const wholePeriod = windowFrom === null || windowFrom <= nowMs - state.sinceDays * 24 * HOUR + MINUTE;
+  const windowPhrase = wholePeriod ? `in the last ${state.sinceDays} days` : `since Akeso started watching at ${clockText(windowFrom)}`;
 
   const gaps = state.gaps || [];
   if (!gaps.length) {
-    lines.push(`No gaps in the last ${state.sinceDays} days: a check finished every time one was due.`);
+    lines.push(`No gaps ${windowPhrase}: a check finished every time one was due.`);
   } else {
-    const total = Math.round(gaps.reduce((sum, gap) => sum + gap.hours, 0) * 10) / 10;
-    lines.push(`${countWord(gaps.length, "period")} in the last ${state.sinceDays} days had no finished check, ${total} hours in total.`);
+    /* Summed from the real start and end of each period. Adding up the rounded
+       hours instead drifted by a fraction per gap, and a total that does not
+       match its own list is the kind of small wrongness that costs a reader
+       their trust in every other number on the page. */
+    const totalMs = gaps.reduce((sum, gap) => sum + Math.max(0, (msOf(gap.to) ?? 0) - (msOf(gap.from) ?? 0)), 0);
+    lines.push(`${countWord(gaps.length, "period")} ${windowPhrase} had no finished check, ${Math.round(totalMs / 360000) / 10} hours in total.`);
     for (const gap of gaps.slice(0, 3)) lines.push(`  ${gap.hours} hours from ${clockText(gap.from)}.`);
     if (gaps.length > 3) lines.push(`  and ${gaps.length - 3} more.`);
     lines.push("Those hours are not covered by anything Akeso can tell you about, and the statement says so rather than averaging them away.");
+  }
+  if (!wholePeriod) {
+    lines.push(`Akeso cannot speak for the ${state.sinceDays} days before that, because it was not watching yet.`);
   }
 
   return lines;
@@ -451,8 +579,15 @@ function countWord(count, singular, plural) {
 function ago(ms) {
   if (!Number.isFinite(ms) || ms < 90 * 1000) return "just now";
   if (ms < HOUR) return `${Math.round(ms / MINUTE)} minutes ago`;
-  if (ms < 36 * HOUR) return `about ${Math.round(ms / HOUR)} hours ago`;
+  if (ms < 36 * HOUR) return `${hours(ms)} ago`;
   return `${Math.round(ms / (24 * HOUR))} days ago`;
+}
+
+/* "about 1 hours" is the kind of seam that tells a reader a machine wrote the
+   sentence, and a founder who stops trusting the sentences stops reading. */
+function hours(ms) {
+  const count = Math.round(ms / HOUR);
+  return count === 1 ? "about an hour" : `about ${count} hours`;
 }
 
 /* How late, or null when the lateness is inside the normal wobble of a loop
@@ -460,7 +595,7 @@ function ago(ms) {
 function lateBy(ms) {
   if (!Number.isFinite(ms) || ms < GAP_GRACE_MINUTES * MINUTE) return null;
   if (ms < HOUR) return `${Math.round(ms / MINUTE)} minutes`;
-  if (ms < 36 * HOUR) return `about ${Math.round(ms / HOUR)} hours`;
+  if (ms < 36 * HOUR) return hours(ms);
   return `${Math.round(ms / (24 * HOUR))} days`;
 }
 
@@ -468,7 +603,7 @@ function inWords(ms) {
   if (!Number.isFinite(ms) || ms <= 0) return "now";
   if (ms < MINUTE) return "in under a minute";
   if (ms < HOUR) return `in about ${Math.round(ms / MINUTE)} minutes`;
-  if (ms < 36 * HOUR) return `in about ${Math.round(ms / HOUR)} hours`;
+  if (ms < 36 * HOUR) return `in ${hours(ms)}`;
   return `in about ${Math.round(ms / (24 * HOUR))} days`;
 }
 

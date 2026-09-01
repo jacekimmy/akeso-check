@@ -6,6 +6,12 @@ import { buildReceipt, runSweep } from "../monitor.mjs";
 import { readLedger, verifyLedger } from "../ledger.mjs";
 import { nextStep, printNextStep } from "../next-step.mjs";
 import { describePolicy } from "../policy.mjs";
+import { buildJourney, printJourney } from "../journey.mjs";
+import { certificationStatus, coverageStatement, fingerprintSchema } from "../certification.mjs";
+import { guardWrite } from "../safety.mjs";
+import { restoreEntitlement, signRequest } from "../restore.mjs";
+import { queueRemoval } from "../approvals.mjs";
+import { applyStandings, standingsFor } from "../precision.mjs";
 
 /* `npx akeso-check monitor`
  *
@@ -55,13 +61,45 @@ export async function runMonitor(args) {
     return;
   }
 
+  /* Coverage starts at certification, never before. A sweep may still RUN
+     uncertified, because looking is always safe and the founder should be able
+     to see what Akeso would find. It just may not write, and the report says
+     plainly that this is not coverage. */
+  const fingerprint = fingerprintSchema({
+    table: detection.database?.entitlementTable,
+    column: detection.database?.entitlementColumn,
+    accountColumn: "id",
+  });
+  const coverage = certificationStatus(await readLedger(root), { schemaFingerprint: fingerprint, now: Date.now() });
+
+  const wantApply = args.includes("--apply");
+  const restoreUrl = flagValue("--restore-url");
+  const sharedSecret = process.env.AKESO_SHARED_SECRET;
+
+  /* The gate every write passes, whatever asked for it. */
+  const guard = wantApply
+    ? await guardWrite(root, { account: null, direction: "grant", entries: await readLedger(root), now: Date.now() })
+    : { allowed: false, reasons: ["read-only run"] };
+
+  const mayWrite = wantApply && coverage.certified && !coverage.stale && guard.allowed && Boolean(restoreUrl && sharedSecret);
+
   const sweep = await runSweep({
     root,
     stripeKey,
-    readAppEntitlements: () => readEntitlements({ listUrl, probeUrl }),
-    apply: args.includes("--apply"),
-    restore: null, /* writing back needs the app's own restore endpoint; grants
-                      are queued and reported until that is wired */
+    policy: coverage.policy || undefined,
+    readAppEntitlements: () => readEntitlements({ listUrl, probeUrl, secret: sharedSecret }),
+    apply: mayWrite,
+    restore: mayWrite
+      ? (account, target, meta) => restoreEntitlement({
+        endpoint: restoreUrl,
+        secret: sharedSecret,
+        account,
+        target,
+        expectedState: meta.expected,
+        reasonCode: meta.reasonCode,
+        idempotencyKey: meta.idempotencyKey,
+      })
+      : null,
   });
 
   if (!sweep.ranged) {
@@ -73,6 +111,20 @@ export async function runMonitor(args) {
 
   const { comparison, drift, safety, alerts } = sweep;
   console.log(`\nAkeso Monitor: ${comparison.counts.stripeSubscriptions} Stripe subscriptions, ${comparison.counts.appAccounts} app accounts, ${comparison.counts.matched} matched.`);
+
+  /* Whether this was coverage or just a look, said before any finding. */
+  if (!coverage.certified || coverage.stale) {
+    console.log(`\n${coverageStatement(coverage).headline}`);
+    console.log(`This run looked, and everything below is real, but Akeso is not watching this app`);
+    console.log(`between runs and did not change anything.`);
+    if (coverage.stale && coverage.staleReason) console.log(`  ${coverage.staleReason}`);
+    console.log(`  npx akeso-check certify`);
+  } else if (wantApply && !mayWrite) {
+    console.log(`\nRead-only this run. Akeso was asked to fix things but could not:`);
+    for (const reason of guard.allowed ? ["your app's restore endpoint was not given (--restore-url), or AKESO_SHARED_SECRET is not set"] : guard.reasons) {
+      console.log(`  ${reason}`);
+    }
+  }
   /* The rule that produced every verdict below, before the verdicts. A
      founder who cannot see the rule cannot tell a real finding from a
      mis-set policy. */
@@ -80,11 +132,22 @@ export async function runMonitor(args) {
   for (const line of describePolicy()) console.log(`  ${line}`);
   console.log();
 
-  if (comparison.clean) {
+  if (!comparison.comparable) {
+    /* Zero matched accounts is not a clean month, it is a run that compared
+       nothing. Almost always the account id Stripe stores does not match the
+       one the app uses, and saying "everything matches" here would be the
+       most reassuring lie the product could tell. */
+    console.log(`NOTHING COULD BE COMPARED. None of the ${comparison.counts.stripeSubscriptions} Stripe subscriptions`);
+    console.log(`matched any of the ${comparison.counts.appAccounts} accounts your app reported, so this run says`);
+    console.log(`nothing at all about your billing.`);
+    console.log(`\nThis is almost always the account id: Stripe needs to carry the same id your`);
+    console.log(`app uses, in client_reference_id or in the subscription's metadata. Until they`);
+    console.log(`line up, Akeso has no way to tell whose access is whose.`);
+  } else if (comparison.clean) {
     console.log(`Everything matches. Every paying customer has access, and nobody who stopped paying still has it.`);
   } else {
     if (drift.grants.length) {
-      console.log(`PAYING BUT LOCKED OUT (${drift.grants.length}) — these people paid you and cannot get in:`);
+      console.log(`PAYING BUT LOCKED OUT (${drift.grants.length}). These people paid you and cannot get in:`);
       for (const row of drift.grants) console.log(`  ${row.account}  ${row.reason}`);
       console.log();
     }
@@ -93,21 +156,33 @@ export async function runMonitor(args) {
     if (queued.length) {
       console.log(`CANCELED BUT STILL HAVE ACCESS (${queued.length}):`);
       for (const row of queued) console.log(`  ${row.account}  ${row.reason}${row.priceMonthly ? `  ($${row.priceMonthly}/mo at list)` : ""}`);
-      console.log(`  Removals are never automatic. Approve each one yourself.\n`);
+      /* Queued, so a human can act on them later without re-running the sweep.
+         Queuing is not removing: nothing has been sent to the app. */
+      for (const row of queued) {
+        await queueRemoval(root, {
+          account: row.account,
+          reason: row.reason,
+          priceMonthly: row.priceMonthly,
+          expectedState: true,
+          ruleVersion: coverage.policy?.ruleVersion || "1",
+        }).catch(() => { /* a queue that cannot be written never blocks the report */ });
+      }
+      console.log(`  Removals are never automatic. Nothing above has happened.`);
+      console.log(`  npx akeso-check approvals\n`);
     }
     if (held.length) {
-      console.log(`HELD BACK (${held.length}) — inside the recent-grant protection window, so Akeso will not touch them:`);
+      console.log(`HELD BACK (${held.length}). Inside the recent-grant protection window, so Akeso will not touch them:`);
       for (const row of held) console.log(`  ${row.account}  ${row.held}`);
       console.log();
     }
     if (comparison.noConclusion?.length) {
-      console.log(`NO CONCLUSION DRAWN (${comparison.noConclusion.length}) — these are mid-flight, so judging them`);
+      console.log(`NO CONCLUSION DRAWN (${comparison.noConclusion.length}). These are mid-flight, so judging them`);
       console.log(`either way would be a guess:`);
       for (const row of comparison.noConclusion.slice(0, 10)) console.log(`  ${row.account}  ${row.status}: ${row.why}`);
       console.log();
     }
     if (drift.unmatched.length) {
-      console.log(`NO STRIPE SUBSCRIPTION AT ALL (${drift.unmatched.length}) — reported, never acted on. Trials and`);
+      console.log(`NO STRIPE SUBSCRIPTION AT ALL (${drift.unmatched.length}). Reported, never acted on. Trials and`);
       console.log(`complimentary accounts look exactly like this, so Akeso does not guess:`);
       for (const row of drift.unmatched.slice(0, 10)) console.log(`  ${row.account}`);
       console.log();
@@ -122,18 +197,32 @@ export async function runMonitor(args) {
   for (const alert of alerts.filter((a) => a.level === "urgent")) console.log(`URGENT: ${alert.title}. ${alert.whatHappensNext}`);
 
   console.log(`Written to .akeso/ledger.jsonl (append-only, and "monitor --receipt" reads it back).`);
-  printNextStep(nextStep({ ledger: await readLedger(root), detection }));
+  const finalLedger = await readLedger(root);
+  printJourney(buildJourney({ detection, ledger: finalLedger }));
+  printNextStep(nextStep({ ledger: finalLedger, detection }));
   console.log();
 }
 
 /* The app's current answer for every account. Prefers one list call; falls
    back to asking the probe account by account when the app only offers that. */
-async function readEntitlements({ listUrl, probeUrl }) {
+async function readEntitlements({ listUrl, probeUrl, secret }) {
   if (listUrl) {
-    const response = await fetch(listUrl, { signal: AbortSignal.timeout(20000) });
+    /* The generated endpoint requires a signature: who is paying you is not
+       public. An unsigned call is still attempted for apps that expose their
+       own unauthenticated list, and its 401 is reported honestly. */
+    const requestBody = JSON.stringify({});
+    const response = await fetch(listUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(secret ? { "akeso-signature": signRequest(requestBody, secret) } : {}),
+      },
+      body: requestBody,
+      signal: AbortSignal.timeout(20000),
+    }).catch(() => fetch(listUrl, { signal: AbortSignal.timeout(20000) }));
     if (!response.ok) throw new Error(`your app answered ${response.status} at ${listUrl}`);
-    const body = await response.json();
-    const rows = Array.isArray(body) ? body : body.accounts || body.entitlements;
+    const payload = await response.json();
+    const rows = Array.isArray(payload) ? payload : payload.accounts || payload.entitlements;
     if (!Array.isArray(rows)) throw new Error("that endpoint did not return a list of accounts");
     return rows.map((row) => ({ account: row.account ?? row.id, billingEntitled: Boolean(row.billingEntitled ?? row.entitled) }));
   }
@@ -176,7 +265,7 @@ async function receipt(root) {
      auditor finds immediately. */
   console.log(`\n  History: ${intact.intact
     ? `${intact.entries} entries, chain unbroken (no entry was edited by anything that did not also rewrite the chain)`
-    : `BROKEN at entry ${intact.brokenAt} — ${intact.reason}`}`);
+    : `BROKEN at entry ${intact.brokenAt}. ${intact.reason}`}`);
   console.log(`\nThese three numbers are never added together. Only money actually collected`);
   console.log(`would count as recovered revenue, and Akeso cannot see your payouts.\n`);
 }

@@ -7,9 +7,10 @@ import { runLifecycle } from "../lifecycle.mjs";
 import { scenarios } from "../stripe-events.mjs";
 import { installProbe, removeProbe } from "../probe.mjs";
 import { applyFixPlan, branchForFix, buildFixPlan, gitState, revertFix } from "../fix.mjs";
-import { appendEntry, fixEntry, lastOfKind, readLedger } from "../ledger.mjs";
+import { appendEntry, checkEntry, fixEntry, lastOfKind, readLedger } from "../ledger.mjs";
 import { nextStep, printNextStep } from "../next-step.mjs";
 import { webhookUrlFor } from "../webhook-url.mjs";
+import { buildJourney, printJourney } from "../journey.mjs";
 
 /* `npx akeso-check fix`
  *
@@ -154,7 +155,23 @@ export async function runFix(args) {
     }
     if (verdict.grade === "A") {
       console.log(`\nProven. Grade A: every billing scenario passes against the repaired app.`);
-      printNextStep(nextStep({ ledger: await readLedger(root), detection, lifecycle: verdict.lifecycle }));
+      /* The proof is a real Check run and has to be recorded as one. Without
+         this the ledger still held only the failing check from before the
+         repair, so every later command read the app as broken and told the
+         founder their proven repair "did not hold". */
+      await appendEntry(root, checkEntry({
+        grade: verdict.grade,
+        lifecycleGrade: verdict.grade,
+        sandboxGrade: null,
+        findings: [],
+        scenarioResults: (verdict.lifecycle?.results || []).map((result) => ({ id: result.id, outcome: result.outcome })),
+        framework: detection.framework?.framework || null,
+        root,
+        provedFix: fixRecord.hash,
+      })).catch(() => { /* a ledger that cannot be written never blocks the result */ });
+      const finalLedger = await readLedger(root);
+      printJourney(buildJourney({ detection, lifecycle: verdict.lifecycle, ledger: finalLedger }));
+      printNextStep(nextStep({ ledger: finalLedger, detection, lifecycle: verdict.lifecycle }));
       console.log();
       return;
     }
@@ -257,7 +274,7 @@ async function revert(root, ledger) {
   for (const file of result.restored) console.log(`  ${file.action.padEnd(9)} ${file.path}`);
   if (result.refused.length) {
     console.log(`\nLeft alone:`);
-    for (const file of result.refused) console.log(`  ${file.path} — ${file.reason}`);
+    for (const file of result.refused) console.log(`  ${file.path}: ${file.reason}`);
   }
   console.log();
 }

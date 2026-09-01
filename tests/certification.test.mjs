@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp } from "node:fs/promises";
+import { appendFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -14,7 +14,8 @@ import {
   fingerprintSchema,
 } from "../src/certification.mjs";
 import { DEFAULT_POLICY, entitledUnder } from "../src/policy.mjs";
-import { appendEntry, checkEntry, readLedger, verifyLedger } from "../src/ledger.mjs";
+import { renderAdapter } from "../src/adapter.mjs";
+import { appendEntry, checkEntry, ledgerPath, readLedger, verifyLedger } from "../src/ledger.mjs";
 
 /* Coverage starts at certification and never before. Every test here is a way
    the product could quietly start claiming to watch an app under rules nobody
@@ -92,24 +93,50 @@ test("the rules in force are stated in the same words the founder confirmed them
 
   const statement = coverageStatement(certificationStatus(await readLedger(root), { schemaFingerprint: PRINT }));
   assert.match(statement.text, /The rules you confirmed:/);
-  assert.ok(!/past_due/.test(statement.text.split("Not paying")[0]), "past_due is not listed as keeping access when the founder said end it");
-  assert.match(statement.text, /a refund ends access/);
-  assert.match(statement.text, /not expected/);
+  assert.match(statement.text, /A card fails and Stripe is retrying it: access ends as soon as a payment fails\./);
+  assert.match(statement.text, /A refund on its own: it ends access\./);
+  assert.match(statement.text, /Accounts with no Stripe subscription at all: not expected/);
+  assert.match(statement.text, /never removes access on its own/, "the founder is told which direction still needs them");
   assert.match(statement.text, /1 Stripe price id is mapped/);
 });
 
-test("every answer the founder gave is visible in the statement, including the ones that keep access", async () => {
-  /* A rule a founder cannot see is a rule they cannot correct, and a wrong
-     rule they never noticed is where confident wrong findings come from. */
-  const root = await scratch();
-  await certified(root, { policy: buildPolicy({ paused: "keep" }) });
-  const keeps = coverageStatement(certificationStatus(await readLedger(root), { schemaFingerprint: PRINT }));
-  assert.match(keeps.text, /Paused subscriptions: access continues/);
+test("every answer the founder gave is visible in the statement, whichever way they answered", async () => {
+  /* A rule a founder cannot see is a rule they cannot correct, and it is the
+     rule Akeso will act on. The Stripe-worded list names a status only when it
+     falls on one particular side: a founder who chose "end access when a card
+     fails" was not mentioned under either heading, so their own answer had
+     disappeared from the statement of the rules they confirmed. */
+  const said = {
+    past_due: {
+      keep: /A card fails and Stripe is retrying it: the customer keeps access/,
+      end: /A card fails and Stripe is retrying it: access ends as soon as a payment fails/,
+    },
+    paused: {
+      keep: /A subscription is paused: access continues/,
+      end: /A subscription is paused: access stops/,
+    },
+    refund: {
+      follow_subscription: /A refund on its own: it changes nothing/,
+      end: /A refund on its own: it ends access/,
+    },
+    no_subscription: {
+      expected: /no Stripe subscription at all: expected/,
+      not_expected: /no Stripe subscription at all: not expected/,
+    },
+    first_payment_incomplete: {
+      no_conclusion: /A first payment that has not finished: not judged either way/,
+      treat_as_not_paying: /A first payment that has not finished: treated as not paying/,
+    },
+  };
 
-  const root2 = await scratch();
-  await certified(root2, { policy: buildPolicy({ paused: "end" }) });
-  const ends = coverageStatement(certificationStatus(await readLedger(root2), { schemaFingerprint: PRINT }));
-  assert.match(ends.text, /Paused subscriptions: access stops/);
+  for (const question of CERTIFICATION_QUESTIONS) {
+    for (const option of question.options) {
+      const root = await scratch();
+      await certified(root, { policy: buildPolicy({ [question.id]: option.value }) });
+      const { text } = coverageStatement(certificationStatus(await readLedger(root), { schemaFingerprint: PRINT }));
+      assert.match(text, said[question.id][option.value], `answering "${option.value}" to "${question.id}" left no trace a founder could read`);
+    }
+  }
 });
 
 test("a statement says which answers were the founder's and which were Akeso's suggestion", async () => {
@@ -176,7 +203,13 @@ test("a schema Akeso could not read this run is never assumed to match", async (
   assert.equal(status.stale, true);
   assert.equal(status.staleCode, "schema_unverified");
   assert.match(status.staleReason, /Akeso could not read/);
-  assert.equal(coverageStatement(status).covered, false);
+
+  const statement = coverageStatement(status);
+  assert.equal(statement.covered, false);
+  /* Re-answering the questions would not fix a table Akeso could not find, so
+     our own failure is not handed back to the founder as homework. */
+  assert.match(statement.whatToDoNext, /from the folder your app's code is in/);
+  assert.ok(!/^Run npx akeso-check certify/.test(statement.whatToDoNext), "the next step must be one that would actually help");
 });
 
 test("a certification with no rules recorded can never read as covered", () => {
@@ -186,6 +219,119 @@ test("a certification with no rules recorded can never read as covered", () => {
   assert.equal(status.stale, true);
   assert.equal(status.staleCode, "no_rules_recorded");
   assert.equal(coverageStatement(status).covered, false);
+});
+
+test("rules Akeso cannot read are not rules, whatever shape they arrive in", () => {
+  /* An entry carrying `policy: "keep"` would otherwise read as covered while
+     every rule in it came out undefined, which the engine reads as "not
+     entitled" for every customer whose card is being retried: a queue of
+     removals under rules nobody ever confirmed. */
+  for (const policy of ["keep", 7, [], { ruleVersion: "1" }, { entitledWhilePastDue: "true", entitledWhilePaused: false }]) {
+    const status = certificationStatus(
+      [{ kind: "certify", certifiedAt: daysAgo(1), policy, schemaFingerprint: PRINT, priceToPlan: {} }],
+      { schemaFingerprint: PRINT },
+    );
+    assert.equal(status.staleCode, "no_rules_recorded", `${JSON.stringify(policy)} was accepted as a set of rules`);
+    assert.equal(status.policy, null, "rules Akeso cannot read are never handed on to a sweep");
+    assert.equal(coverageStatement(status).covered, false);
+  }
+});
+
+test("a statement never dies half printed, whatever it is handed", () => {
+  /* A printer that throws takes the whole command down with it, including the
+     findings it was about to show. Anything it cannot read reads as not
+     covered, which is the safe direction. */
+  for (const status of [
+    null,
+    {},
+    { certified: true, at: "2026-01-01T00:00:00.000Z", policy: null, stale: false },
+    { certified: true, at: null, policy: buildPolicy({}), stale: false },
+    { certified: true, at: "not a date", policy: buildPolicy({}), stale: false },
+  ]) {
+    const statement = coverageStatement(status);
+    assert.equal(statement.covered, false, `${JSON.stringify(status)} was read as covered`);
+    assert.ok(statement.whatToDoNext, "a founder is never left without the next step");
+  }
+});
+
+test("a line Akeso could not read after the certification stops coverage", async () => {
+  const root = await scratch();
+  await certified(root, { certifiedAt: daysAgo(1) });
+  /* A write that was cut off, which is what a crash mid-append leaves behind.
+     It may have been a newer certification, so Akeso cannot say which rules
+     are in force. */
+  await appendFile(ledgerPath(root), '{"kind":"certify","policy"\n');
+
+  const status = certificationStatus(await readLedger(root), { schemaFingerprint: PRINT });
+  assert.equal(status.stale, true, "an unreadable line after the certification may have been newer rules");
+  assert.equal(status.staleCode, "ledger_unreadable");
+  assert.match(status.staleReason, /Akeso could not read/, "our own failure is worded as ours, not as a fault in the app");
+  assert.equal(coverageStatement(status).covered, false);
+});
+
+test("a line Akeso could not read before the certification does not stop coverage", async () => {
+  /* Anything written before the certification in force was superseded by it,
+     so it cannot change which rules apply. Stopping coverage for it would be
+     crying wolf. */
+  const root = await scratch();
+  await appendEntry(root, checkEntry({ grade: "A", findings: [] }));
+  await appendFile(ledgerPath(root), "half a line of nothing\n");
+  await certified(root, { certifiedAt: daysAgo(1) });
+
+  const status = certificationStatus(await readLedger(root), { schemaFingerprint: PRINT });
+  assert.equal(status.stale, false);
+  assert.equal(coverageStatement(status).covered, true);
+});
+
+test("an unreadable record is never reported as a founder who has not certified", async () => {
+  const root = await scratch();
+  await appendEntry(root, checkEntry({ grade: "A", findings: [] }));
+  await appendFile(ledgerPath(root), '{"kind":"certify"\n');
+
+  const status = certificationStatus(await readLedger(root), { schemaFingerprint: PRINT });
+  assert.equal(status.certified, false, "nothing readable says these rules were ever confirmed");
+  assert.equal(status.couldNotRead, true);
+
+  const statement = coverageStatement(status);
+  assert.equal(statement.covered, false);
+  assert.match(statement.text, /could not read part of this app's own record/, "not measured is said out loud, never rounded to 'you never certified'");
+  assert.match(statement.whatToDoNext, /certify/);
+});
+
+test("a certification dated in the future never buys itself coverage it did not earn", () => {
+  /* A certification ahead of the clock never gets older, so the age limit
+     would never fire on it: a ledger dated next year would be treated as fresh
+     for a year. A clock a few minutes out is a different thing and must not
+     cost anyone their coverage. */
+  const ahead = (ms) => certificationStatus(
+    [{ kind: "certify", certifiedAt: new Date(Date.now() + ms).toISOString(), policy: buildPolicy({}), schemaFingerprint: PRINT, priceToPlan: {} }],
+    { schemaFingerprint: PRINT },
+  );
+
+  const nextYear = ahead(365 * DAY_MS);
+  assert.equal(nextYear.stale, true);
+  assert.equal(nextYear.staleCode, "dated_in_future");
+  assert.equal(coverageStatement(nextYear).covered, false);
+
+  const slightlyFast = ahead(60000);
+  assert.equal(slightlyFast.stale, false, "a clock one minute fast is not a reason to drop coverage");
+  assert.equal(slightlyFast.ageDays, 0, "a founder is never shown an age of minus one days");
+});
+
+test("a date the ledger could never use is refused before it is written, not after", async () => {
+  /* The ledger is append-only, so a bad date here can never be corrected, only
+     superseded. Both of these would leave a certification that can never be
+     aged. */
+  const root = await scratch();
+  await assert.rejects(
+    () => certified(root, { certifiedAt: "some time last spring" }),
+    /not a date Akeso can read/,
+  );
+  await assert.rejects(
+    () => certified(root, { certifiedAt: new Date(Date.now() + 30 * DAY_MS).toISOString() }),
+    /dated in the future/,
+  );
+  assert.deepEqual(await readLedger(root), [], "a refused certification writes nothing");
 });
 
 test("a certification with an unreadable date is stale, never assumed current", () => {
@@ -227,14 +373,26 @@ test("answering every question the way Akeso suggests is the same rule set, not 
   const policy = buildPolicy(answers);
 
   assert.deepEqual(policy.defaulted, [], "these answers were given, not assumed");
-  assert.equal(policy.ruleVersion, DEFAULT_POLICY.ruleVersion, "identical rules must carry an identical version");
+  assert.equal(policy.rulesFingerprint, buildPolicy({}).rulesFingerprint, "identical rules must read as identical whether typed in or left alone");
 });
 
-test("different rules carry a different rule version, so a finding can be traced back", () => {
+test("different rules carry a different fingerprint, so a finding can be traced back", () => {
   const lenient = buildPolicy({});
   const strict = buildPolicy({ past_due: "end" });
-  assert.notEqual(strict.ruleVersion, lenient.ruleVersion);
-  assert.equal(buildPolicy({ past_due: "end" }).ruleVersion, strict.ruleVersion, "the same answers always version the same");
+  assert.notEqual(strict.rulesFingerprint, lenient.rulesFingerprint);
+  assert.equal(buildPolicy({ past_due: "end" }).rulesFingerprint, strict.rulesFingerprint, "the same answers always fingerprint the same");
+});
+
+test("certification never invents a ruleVersion the founder's own app would refuse", () => {
+  /* ruleVersion is a shared contract value, not a label. The adapter Akeso
+     generates exports AKESO_RULE_VERSION, and both restoreBillingEntitlement
+     and the restore endpoint answer "conflict" to any request whose ruleVersion
+     is not equal to it. A version derived from the founder's answers would
+     never match the constant in their app, so every restore would be refused,
+     including the grants that let a locked-out paying customer back in. */
+  const installed = renderAdapter().match(/AKESO_RULE_VERSION = "([^"]+)"/)[1];
+  assert.equal(buildPolicy({}).ruleVersion, installed);
+  assert.equal(buildPolicy({ past_due: "end", paused: "keep", refund: "end" }).ruleVersion, installed, "answering the questions is not a change to the app's rule version");
 });
 
 test("the founder's answers actually change what the engine concludes", () => {
@@ -262,6 +420,24 @@ test("an answer that was never offered is refused, never rounded to the nearest 
   /* An unanswered question is a default. A wrong answer is an error. The two
      must never collapse into each other. */
   assert.equal(buildPolicy({ past_due: undefined }).defaulted.includes("past_due"), true);
+});
+
+test("an answer filed under a question Akeso does not ask is refused, never dropped", () => {
+  /* A misspelled id is a lost answer, not an unanswered question. Dropped
+     silently, the founder who said "end access when a card fails" would be
+     told in writing that they left it at Akeso's suggestion, and Akeso would
+     keep access on every failing card. */
+  assert.throws(() => buildPolicy({ past_dues: "end" }), /not one of the questions/);
+  assert.throws(() => buildPolicy({ pastDue: "end", paused: "keep" }), /not one of the questions/);
+});
+
+test("something that is not a set of answers is refused, never read as no answers", () => {
+  for (const notAnswers of ["past_due=end", ["past_due"], 7]) {
+    assert.throws(() => buildPolicy(notAnswers), /set of question ids/, `${JSON.stringify(notAnswers)} was accepted as an empty set of answers`);
+  }
+  /* Nothing at all is a real case: it means every question is unanswered. */
+  assert.equal(buildPolicy().defaulted.length, CERTIFICATION_QUESTIONS.length);
+  assert.equal(buildPolicy(null).defaulted.length, CERTIFICATION_QUESTIONS.length);
 });
 
 test("every question is answerable by a non-technical founder and says why it is asked", () => {
@@ -298,6 +474,38 @@ test("nothing a founder reads uses jargon punctuation or emoji", async () => {
   assert.ok(!/[—–]/.test(prose), "no em-dashes or en-dashes");
   assert.ok(!/\p{Extended_Pictographic}/u.test(prose), "no emoji");
   assert.ok(!/tamper-proof/i.test(prose), "the ledger is tamper-evident, never tamper-proof");
+  for (const status of statuses) assert.ok(coverageStatement(status).whatToDoNext, "every statement says what happens next");
+});
+
+test("a founder is never shown Akeso's own names for its questions", async () => {
+  /* The list of questions left at the suggested answer used to be printed as
+     raw ids, which puts first_payment_incomplete in front of someone who was
+     promised plain English. */
+  const root = await scratch();
+  await certified(root, { policy: buildPolicy({ paused: "keep" }) });
+  const { text } = coverageStatement(certificationStatus(await readLedger(root), { schemaFingerprint: PRINT }));
+
+  assert.match(text, /left at Akeso's suggested answer/);
+  for (const id of ["first_payment_incomplete", "no_subscription"]) {
+    assert.ok(!text.includes(id), `the statement shows a founder the internal name ${id}`);
+  }
+  assert.match(text, /a first payment that has not finished/, "the question is named in words instead");
+});
+
+test("a covered statement claims nothing it did not measure", async () => {
+  const root = await scratch();
+  await certified(root, { certifiedAt: daysAgo(2) });
+  const { text } = coverageStatement(certificationStatus(await readLedger(root), { schemaFingerprint: PRINT }));
+
+  /* Certifying turns coverage on. It does not start a sweep, and this module
+     cannot see whether one is scheduled, so it must not say one is running. */
+  assert.ok(!/keeps sweeping/.test(text), "certification cannot know that sweeps are happening");
+  /* Staleness is measured from an instant and this line is a date, so the two
+     can differ by part of a day. The rule is stated, the date is approximate,
+     and the consequence is spelled out. */
+  assert.match(text, new RegExp(`stand for ${CERTIFICATION_MAX_AGE_DAYS} days, so until about \\d{4}-\\d{2}-\\d{2}`));
+  assert.match(text, /Akeso stops covering this app until you confirm them again/);
+  assert.ok(!/two minutes/.test(text), "no invented number, however small");
 });
 
 /* ----------------------------------------------------------- fingerprint */

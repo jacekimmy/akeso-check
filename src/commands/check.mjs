@@ -24,6 +24,7 @@ import { runSandboxLifecycle } from "../sandbox.mjs";
 import { appendEntry, checkEntry, readLedger } from "../ledger.mjs";
 import { nextStep, printNextStep } from "../next-step.mjs";
 import { webhookUrlFor } from "../webhook-url.mjs";
+import { buildJourney, printJourney } from "../journey.mjs";
 
 export async function runCheck(args) {
 const flagValue = (name) => flagValueOf(args, name);
@@ -254,7 +255,13 @@ if (process.env.CODESPACES) {
   spawn(process.platform === "darwin" ? "open" : "xdg-open", [out], { stdio: "ignore", detached: true });
 }
 
-/* Where this leaves the founder, decided in one place for all three commands. */
-if (!probeNote) printNextStep(nextStep({ ledger: await readLedger(root), detection, lifecycle, sandbox }));
+/* Where this leaves the founder, decided in one place for all three commands.
+   The loop is printed first so the next step lands inside a picture the
+   founder already understands, rather than as a bare instruction. */
+if (!probeNote) {
+  const finalLedger = await readLedger(root);
+  printJourney(buildJourney({ detection, lifecycle, sandbox, ledger: finalLedger }));
+  printNextStep(nextStep({ ledger: finalLedger, detection, lifecycle, sandbox }));
+}
 console.log();
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -17,7 +17,7 @@ import {
   suspendedAccounts,
   writeBudget,
 } from "../src/safety.mjs";
-import { appendEntry, readLedger } from "../src/ledger.mjs";
+import { appendEntry, ledgerPath, readLedger } from "../src/ledger.mjs";
 
 /* These are the brakes. Every test here is one way a bug in the rest of Akeso
    turns into a customer's paying users all losing access at once. */
@@ -30,6 +30,17 @@ const makeAkesoDir = (root) => mkdir(path.dirname(killSwitchPath(root)), { recur
 
 const restore = (account, direction, at, result = "applied") =>
   ({ kind: "restore", account, direction, result, at: new Date(at).toISOString() });
+
+/* A removal that reached the queue. Everything Akeso is allowed to take away
+   starts here, and nothing may be taken away that did not. */
+const queuedRemoval = (account, id, at = new Date().toISOString()) =>
+  ({ kind: "approval", id, state: "queued", account, queuedAt: at, readyAt: at, at });
+
+/* The two ledger lines a person leaves behind when they approve one removal. */
+const approvedRemoval = (account, id, at = new Date().toISOString()) => ([
+  queuedRemoval(account, id, at),
+  { kind: "approval", id, state: "approved", by: "jace", decidedAt: at, at },
+]);
 
 /* Doctrine: every message a human reads is a plain sentence that says what
    happens next. No em-dashes, no emoji, no jargon. */
@@ -128,12 +139,82 @@ test("a kill switch file put back after a resume halts again", async () => {
 test("a system with nothing wrong with it allows the write", async () => {
   const root = await scratch();
   const grant = await guardWrite(root, { account: "a", direction: "grant", entries: [] });
-  const removal = await guardWrite(root, { account: "a", direction: "remove", entries: [] });
+  const removal = await guardWrite(root, {
+    account: "a",
+    direction: "remove",
+    approvalId: "r-1",
+    entries: approvedRemoval("a", "r-1"),
+  });
 
   /* The positive control. Without this, every test above would still pass if
      guardWrite simply refused everything forever. */
   assert.deepEqual(grant, { allowed: true, reasons: [] });
-  assert.equal(removal.allowed, true);
+  assert.deepEqual(removal, { allowed: true, reasons: [] }, "a removal a person approved must still be able to happen");
+});
+
+/* ------------------------------------------------- a human behind removals */
+
+test("a removal nobody ever queued is refused, however it was asked for", async () => {
+  const root = await scratch();
+  const verdict = await guardWrite(root, { account: "a", direction: "remove", entries: [] });
+
+  assert.equal(verdict.allowed, false, "taking paid access away is the one thing that always needs a person");
+  assert.match(verdict.reasons[0], /no removal in the queue for that account/);
+});
+
+test("a removal in the queue for one account is not permission to touch another", async () => {
+  const root = await scratch();
+  /* This is how the approvals command calls the gate: it hands over the ledger
+     the queued removal lives in and names the account, not the id, because it
+     calls the gate before it writes down the approval. */
+  const allowed = await guardWrite(root, { account: "a", direction: "remove", entries: [queuedRemoval("a", "r-1")] });
+  assert.deepEqual(allowed, { allowed: true, reasons: [] }, "the approved-removal path has to keep working");
+
+  const other = await guardWrite(root, { account: "b", direction: "remove", entries: [queuedRemoval("a", "r-1")] });
+  assert.equal(other.allowed, false, "a queued removal for one account is not one for the account next to it");
+});
+
+test("a removal that nobody answered until it expired is not run later", async () => {
+  const root = await scratch();
+  const old = new Date(Date.now() - 8 * 86400000).toISOString();
+  const entries = [queuedRemoval("a", "r-1", old)];
+
+  const verdict = await guardWrite(root, { account: "a", direction: "remove", entries });
+  assert.equal(verdict.allowed, false, "a week-old question is not a yes");
+  assert.match(verdict.reasons[0], /expired/);
+});
+
+test("a cancelled approval never becomes permission later", async () => {
+  const root = await scratch();
+  const at = new Date().toISOString();
+  const entries = [
+    { kind: "approval", id: "r-1", state: "queued", account: "a", queuedAt: at, readyAt: at, at },
+    { kind: "approval", id: "r-1", state: "cancelled", by: "jace", decidedAt: at, at },
+  ];
+
+  const verdict = await guardWrite(root, { account: "a", direction: "remove", approvalId: "r-1", entries });
+  assert.equal(verdict.allowed, false);
+  assert.match(verdict.reasons[0], /cancellation is final/);
+});
+
+test("an approval given for one account does not take access from another", async () => {
+  const root = await scratch();
+  const verdict = await guardWrite(root, {
+    account: "b",
+    direction: "remove",
+    approvalId: "r-1",
+    entries: approvedRemoval("a", "r-1"),
+  });
+
+  assert.equal(verdict.allowed, false, "one approval covers one account");
+  assert.match(verdict.reasons[0], /queued for account a, not for b/);
+});
+
+test("an approval id Akeso has never seen is not an approval", async () => {
+  const root = await scratch();
+  const verdict = await guardWrite(root, { account: "a", direction: "remove", approvalId: "made-up", entries: [] });
+  assert.equal(verdict.allowed, false);
+  assert.match(verdict.reasons[0], /under an approval it has no record of/);
 });
 
 /* -------------------------------------------------------------- flapping */
@@ -182,6 +263,20 @@ test("flapping counts only writes that actually landed", () => {
     restore("a", "grant", now - 3600000, "conflict"),
   ];
   assert.deepEqual(detectFlapping(entries, { now }), [], "an attempt that changed nothing is not a flip");
+});
+
+test("a raised threshold holds even when the reversals are there", () => {
+  const now = Date.now();
+  const entries = [
+    restore("a", "grant", now - 5 * 3600000),
+    restore("a", "remove", now - 4 * 3600000),
+    restore("a", "grant", now - 3600000),
+  ];
+  /* At the defaults, three writes with two reversals is the smallest possible
+     flap, so the count and the reversals move together. This pins the count on
+     its own: a founder who raises the bar to four gets a bar of four. */
+  assert.deepEqual(detectFlapping(entries, { now, threshold: 4 }), []);
+  assert.equal(detectFlapping(entries, { now, threshold: 3 }).length, 1, "the threshold is the only difference");
 });
 
 test("flapping that stopped yesterday is not flapping today", () => {
@@ -270,12 +365,22 @@ test("a suspension with no readable time reports no duration rather than a made-
   assert.equal(held[0].heldHours, null, "never invent a number Akeso cannot measure");
 });
 
-test("an unrecognised suspend state is not a clearance", () => {
+test("an unrecognised suspend state is not a clearance, and does not overwrite the hold either", () => {
+  const since = new Date(Date.now() - 3 * 3600000).toISOString();
   const entries = [
-    { kind: "suspend", state: "on", account: "a", reason: "Held.", at: new Date().toISOString() },
+    { kind: "suspend", state: "on", account: "a", reason: "Access flipped four times in an hour.", by: "akeso", at: since },
     { kind: "suspend", state: "cleared", account: "a", at: new Date().toISOString() },
   ];
-  assert.equal(suspendedAccounts(entries).length, 1, "a typo in a state field must never release an account");
+  const held = suspendedAccounts(entries);
+
+  assert.equal(held.length, 1, "a typo in a state field must never release an account");
+  /* A state from a version of this file we do not know about is ignored, never
+     read as a decision. Letting it stand in as a fresh hold would replace the
+     reason a person wrote with a placeholder, and the reason is the whole point
+     of the record. */
+  assert.equal(held[0].reason, "Access flipped four times in an hour.");
+  assert.equal(held[0].since, since);
+  assert.equal(held[0].by, "akeso");
 });
 
 test("re-suspending after a clearance holds the account again", () => {
@@ -302,6 +407,13 @@ test("a release with no canary result at all is refused", () => {
 test("a release that does not say which release it is cannot be cleared", () => {
   const gate = canaryGate({ canaryResults: [{ releaseId: "1.4.0", result: "clean" }] });
   assert.equal(gate.allowed, false, "we cannot prove a release was tried if we do not know which one it is");
+  assert.match(gate.reason, /did not say which version/, "refusing for the right reason, not by accident");
+
+  /* Two unnamed things are not the same thing. Without the check above, an
+     unnamed run and an unnamed canary result match each other and open the
+     gate on a pair of blanks. */
+  const blanks = canaryGate({ canaryResults: [{ clean: true }] });
+  assert.equal(blanks.allowed, false);
 });
 
 test("another release passing its canary does not clear this one", () => {
@@ -328,6 +440,18 @@ test("a clean canary on this release opens the gate", () => {
   const gate = canaryGate({ releaseId: "1.4.0", canaryResults: [{ releaseId: "1.4.0", clean: true }] });
   assert.equal(gate.allowed, true, "the gate must be able to open, or nothing else here is a real test");
   assert.match(gate.reason, /ran cleanly/);
+});
+
+test("a canary result that contradicts itself is not a pass", () => {
+  const gate = canaryGate({ releaseId: "1.4.0", canaryResults: [{ releaseId: "1.4.0", clean: false, result: "clean" }] });
+  assert.equal(gate.allowed, false, "a report that says both things cannot be read for the half that opens the gate");
+});
+
+test("a required number of canaries that is not a number refuses rather than opens", () => {
+  for (const minimumClean of [Number.NaN, 0, -1, "two", null]) {
+    const gate = canaryGate({ releaseId: "1.4.0", canaryResults: [{ releaseId: "1.4.0", clean: true }], minimumClean });
+    assert.equal(gate.allowed, false, `a minimum of ${String(minimumClean)} is not a bar anything can clear`);
+  }
 });
 
 test("one clean canary does not satisfy a requirement for two", () => {
@@ -376,6 +500,15 @@ test("the daily ceiling catches what the hourly ceiling never sees", () => {
 test("a restore with no readable time counts against the budget rather than buying a free write", () => {
   const budget = writeBudget([{ kind: "restore", account: "a", direction: "grant", result: "applied" }], { now: Date.now() });
   assert.equal(budget.used.hour, 1, "one corrupt line must never buy an unlimited number of writes");
+  assert.equal(budget.undated, 1, "how much of the count was assumed is kept separate from the count");
+});
+
+test("a budget stopped by entries it could not date says that, instead of claiming it measured them", () => {
+  const undatable = Array.from({ length: 3 }, () => ({ kind: "restore", account: "a", direction: "grant", result: "applied" }));
+  const budget = writeBudget(undatable, { now: Date.now(), perHour: 3 });
+
+  assert.equal(budget.exhausted, true);
+  assert.match(budget.reason, /could not read a time on 3 of those entries/, "never report as measured what was assumed");
 });
 
 test("a restore stamped in the future does not hand out a fresh budget", () => {
@@ -449,21 +582,182 @@ test("the gate reports every reason at once, not the first one it found", async 
   assert.equal(verdict.reasons.length, 3, "a founder who fixes one refusal and hits the next has been told half the truth twice");
 });
 
-test("the gate never throws, whatever it is handed", async () => {
+test("the gate refuses everything malformed, and never throws doing it", async () => {
   const verdicts = await Promise.all([
     guardWrite("/akeso/no/such/directory/at/all", { account: "a", direction: "grant" }),
     guardWrite(undefined, { account: "a", direction: "grant", entries: [] }),
     guardWrite(await scratch(), {}),
     guardWrite(await scratch(), { account: "a", direction: "grant", entries: "not an array" }),
     guardWrite(await scratch(), { account: "a", direction: "grant", now: Number.NaN }),
+    guardWrite(await scratch(), { account: "a", direction: "grant", now: "yesterday" }),
   ]);
 
   for (const verdict of verdicts) {
-    assert.equal(typeof verdict.allowed, "boolean");
     assert.ok(Array.isArray(verdict.reasons));
-    /* Our own failure is never a licence to write. */
-    if (!verdict.allowed) assert.ok(verdict.reasons.length > 0, "a refusal always says why");
+    /* Shape alone would let this test pass against a gate that allowed all six.
+       Every one of these is Akeso failing, and our own failure is never a
+       licence to write. */
+    assert.equal(verdict.allowed, false, `this should have been refused: ${verdict.reasons.join(" ")}`);
+    assert.ok(verdict.reasons.length > 0, "a refusal always says why");
   }
+});
+
+/* --------------------------------------------- checks we could not make */
+
+test("a clock Akeso cannot read is not an empty write budget", () => {
+  const now = Date.now();
+  const entries = Array.from({ length: 50 }, (_, i) => restore(`a${i}`, "grant", now - 60000));
+  const budget = writeBudget(entries, { now: Number.NaN });
+
+  assert.deepEqual(budget.used, { hour: null, day: null }, "unmeasured is reported as unmeasured, never as zero");
+  assert.deepEqual(budget.remaining, { hour: null, day: null });
+  assert.equal(budget.exhausted, true, "a broken clock must never hand out a fresh budget");
+  assert.match(budget.reason, /could not read the clock/);
+});
+
+test("a broken clock refuses the write instead of allowing it", async () => {
+  const root = await scratch();
+  for (const now of [Number.NaN, "yesterday", null, Infinity]) {
+    const verdict = await guardWrite(root, { account: "a", direction: "grant", entries: [], now });
+    assert.equal(verdict.allowed, false, `a "${String(now)}" clock must not authorise a write`);
+  }
+});
+
+test("a suspension held against an unreadable clock reports no duration, not a NaN", () => {
+  const held = suspendedAccounts([{ kind: "suspend", state: "on", account: "a", reason: "Held.", at: new Date().toISOString() }], { now: Number.NaN });
+  assert.equal(held.length, 1, "the hold itself does not depend on the clock");
+  assert.equal(held[0].heldHours, null, "never invent a number Akeso cannot measure, and never leak a NaN as one");
+});
+
+test("a kill switch Akeso can see but cannot read counts as stopped", async () => {
+  const root = await scratch();
+  /* The file exists as a directory: readable path, unreadable contents. This is
+     the shape of every permissions and corruption failure on that file. */
+  await mkdir(killSwitchPath(root), { recursive: true });
+
+  const halt = await isHalted(root);
+  assert.equal(halt.halted, true, "a brake we cannot read is not a brake we may ignore");
+  assert.equal(halt.source, "unreadable_file");
+
+  const verdict = await guardWrite(root, { account: "a", direction: "grant", entries: [] });
+  assert.equal(verdict.allowed, false);
+});
+
+test("a history file Akeso cannot open is not a history that says nothing", async (t) => {
+  const root = await scratch();
+  await haltNow(root, { reason: "Stopped while we work out what happened.", by: "jace" });
+  await rm(killSwitchPath(root));            /* the file brake is gone, the recorded halt is not */
+  await chmod(ledgerPath(root), 0o000);
+
+  const staged = await readFile(ledgerPath(root), "utf8").then(() => false, () => true);
+  /* Never claim a pass we did not measure: a user who can read any file cannot
+     stage this failure, so the test says so instead of passing. */
+  if (!staged) return t.skip("this user can read a file with no permissions, so the fault cannot be staged");
+
+  const halt = await isHalted(root);
+  assert.equal(halt.halted, true, "an unreadable history hides the halt inside it");
+  assert.equal(halt.source, "unreadable_ledger");
+
+  const verdict = await guardWrite(root, { account: "a", direction: "grant" });
+  assert.equal(verdict.allowed, false, "reading nothing is not the same as there being nothing");
+  await chmod(ledgerPath(root), 0o600);
+});
+
+test("a halt written into the history the caller handed us still stops the write", async () => {
+  const root = await scratch();
+  const entries = [{ kind: "halt", state: "on", reason: "Stopped by hand.", at: new Date().toISOString() }];
+
+  const verdict = await guardWrite(root, { account: "a", direction: "grant", entries });
+  assert.equal(verdict.allowed, false, "the history a write is judged against is the one that must stop it");
+  assert.match(verdict.reasons[0], /including giving access back/);
+});
+
+test("a project folder that is not there refuses the write rather than reading an empty history", async () => {
+  const verdict = await guardWrite("/akeso/no/such/directory/at/all", { account: "a", direction: "grant" });
+  assert.equal(verdict.allowed, false);
+  assert.match(verdict.reasons[0], /could not find the project folder/);
+});
+
+test("a history that is not a history is refused, never quietly swapped for the file on disk", async () => {
+  const root = await scratch();
+  await suspendAccount(root, { account: "a", reason: "Held." });
+
+  for (const entries of ["not an array", { kind: "halt" }, 7]) {
+    const verdict = await guardWrite(root, { account: "a", direction: "grant", entries });
+    assert.equal(verdict.allowed, false);
+    assert.match(verdict.reasons[0], /not a list of history entries/);
+  }
+});
+
+test("detectFlapping says so rather than reporting no flapping it never measured", () => {
+  assert.throws(() => detectFlapping([], { now: Number.NaN }), /readable `now`/);
+});
+
+/* ------------------------------------------------ confirming the brakes */
+
+test("halting is only reported as done after the state is read back", async () => {
+  const root = await scratch();
+  const result = await haltNow(root, { reason: "Removals looked wrong.", by: "jace" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.confirmed, true, "success is claimed only after a re-read");
+  assert.equal(result.halted, true);
+  assert.equal(result.entry.kind, "halt");
+  assertFounderReadable(result.message, "the halt message");
+});
+
+test("a resume that cannot clear the brake says so instead of reporting success", async () => {
+  const root = await scratch();
+  await haltNow(root, { reason: "Stopping.", by: "jace" });
+  await rm(killSwitchPath(root));
+  /* A kill switch that cannot be removed: the brake is still on afterwards, and
+     the only wrong answer here is "running again". */
+  await mkdir(killSwitchPath(root), { recursive: true });
+
+  const result = await resumeHalt(root, { by: "jace" });
+  assert.equal(result.ok, false, "a resume that did not take is not a resume");
+  assert.equal(result.halted, true);
+  assert.equal((await isHalted(root)).halted, true);
+  assertFounderReadable(result.message, "the failed resume message");
+});
+
+test("a halt that could not be written down anywhere is never reported as stopped", async () => {
+  const root = await scratch();
+  /* .akeso is a file, so neither the kill switch nor the ledger can be written.
+     Akeso reads as stopped in this state only because its own folder is broken,
+     and that stop disappears the moment somebody fixes the folder. */
+  await writeFile(path.join(root, ".akeso"), "this is a file, not a folder\n");
+
+  const result = await haltNow(root, { reason: "Stop everything now.", by: "jace" });
+
+  assert.equal(result.ok, false, "a stop nobody could write down is not a stop");
+  assert.equal(result.confirmed, false);
+  assert.ok(result.couldNotWriteFile, "it says which brake failed");
+  assert.ok(result.couldNotRecord);
+  assert.match(result.message, /could not write the stop down anywhere/);
+  /* The founder runs this while something is going wrong. A stack trace tells
+     them nothing about whether Akeso stopped. */
+  assertFounderReadable(result.message, "the failed halt message");
+});
+
+test("a resume that could not be written down is not a resume either", async () => {
+  const root = await scratch();
+  await writeFile(path.join(root, ".akeso"), "this is a file, not a folder\n");
+
+  const result = await resumeHalt(root, { by: "jace" });
+  assert.equal(result.ok, false);
+  assert.ok(result.couldNotRecord);
+  assertFounderReadable(result.message, "the failed resume message");
+});
+
+test("a resume that worked says what happens next", async () => {
+  const root = await scratch();
+  await haltNow(root, { reason: "Stopping.", by: "jace" });
+  const result = await resumeHalt(root, { by: "jace" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.confirmed, true);
+  assertFounderReadable(result.message, "the resume message");
 });
 
 test("every refusal is a sentence a founder can act on", async () => {
@@ -481,7 +775,13 @@ test("every refusal is a sentence a founder can act on", async () => {
   const sentences = [
     ...(await guardWrite(root, { account: "a", direction: "grant", entries, now, limits: { perHour: 2, perDay: 2 } })).reasons,
     ...(await guardWrite(root, { direction: "sideways", entries: [null] })).reasons,
+    ...(await guardWrite(await scratch(), { account: "b", direction: "remove", entries: [] })).reasons,
+    ...(await guardWrite(await scratch(), { account: "b", direction: "remove", approvalId: "r-1", entries: approvedRemoval("c", "r-1") })).reasons,
+    ...(await guardWrite(await scratch(), { account: "b", direction: "grant", entries: [], now: Number.NaN })).reasons,
+    ...(await guardWrite(await scratch(), { account: "b", direction: "grant", entries: "not an array" })).reasons,
+    ...(await guardWrite("/akeso/no/such/directory/at/all", { account: "b", direction: "grant" })).reasons,
     canaryGate({ releaseId: "1.4.0", canaryResults: [] }).reason,
+    canaryGate({ releaseId: "1.4.0", canaryResults: [{ releaseId: "1.4.0", clean: true }], minimumClean: Number.NaN }).reason,
     canaryGate({ releaseId: "1.4.0", canaryResults: [{ releaseId: "1.4.0", result: "failed" }] }).reason,
     canaryGate({ releaseId: "1.4.0", canaryResults: [{ releaseId: "1.4.0", clean: true }] }).reason,
     writeBudget([restore("x", "grant", now)], { now, perHour: 1 }).reason,

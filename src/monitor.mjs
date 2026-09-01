@@ -48,8 +48,12 @@ export function classifyDrift(comparison, { grantedAt = {}, now = Date.now() } =
   }));
 
   const removals = comparison.canceledButEntitled.map((row) => {
+    /* A grant timestamp comes out of a ledger that may have been hand-edited,
+       so it can be anything. An unreadable one means the protection window is
+       simply unknown, never that the window has passed. */
     const granted = grantedAt[row.account];
-    const ageHours = granted ? (now - new Date(granted).getTime()) / 3600000 : null;
+    const grantedMs = typeof granted === "string" || typeof granted === "number" ? new Date(granted).getTime() : NaN;
+    const ageHours = Number.isFinite(grantedMs) ? (now - grantedMs) / 3600000 : null;
     /* Recently granted access is the signature of a race we lost, not of a
        leak. Removing it would fight the app's own recent decision. */
     const tooNew = ageHours !== null && ageHours < LIMITS.minAccountAgeHoursForRemoval;
@@ -238,7 +242,13 @@ export async function runSweep({
     comparison: {
       monthlyExposure: comparison.monthlyExposure,
       counts: comparison.counts,
-      clean: comparison.clean,
+      /* "Clean" is only meaningful when something was actually compared. A
+         sweep where no Stripe subscription matched any app account is neither
+         clean nor dirty, and recording it as clean would let every downstream
+         reader (the receipt, the statement, the loop picture) report a clean
+         bill of health nobody earned. */
+      comparable: comparison.comparable,
+      clean: comparison.comparable ? comparison.clean : null,
       /* The rule version the verdict was reached under. A finding read back
          next month means nothing without knowing which policy produced it. */
       policyVersion: comparison.policyVersion,

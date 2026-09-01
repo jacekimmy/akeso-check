@@ -40,6 +40,19 @@ export const ON_NOTICE_AT = { confirmed: 1, judged: 2 };  /* precision 0.5 */
 
 const VERDICTS = ["confirmed", "dismissed"];
 
+const UNNAMED_RULE = "(rule not named)";
+
+/* An id either identifies a finding or it is nothing. An empty or blank string
+   looks like an id and identifies nothing, so counting it as one makes every
+   judgement carrying it look like a judgement about the SAME finding, and they
+   supersede each other down to a single one. That is evidence disappearing
+   with nobody watching, so a blank becomes null here and stays null. */
+const identityOf = (findingId) => {
+  if (findingId === null || findingId === undefined) return null;
+  const text = String(findingId).trim();
+  return text === "" ? null : text;
+};
+
 /* ------------------------------------------------------------- recording */
 
 /* One judgement from the founder about one finding. "confirmed" means the
@@ -50,16 +63,64 @@ const VERDICTS = ["confirmed", "dismissed"];
    do not recognise must never be quietly filed as a dismissal, because that
    would let a typo demote a working rule. */
 export async function recordFeedback(root, { findingId = null, rule, account = null, verdict, note = null }) {
-  if (!rule) {
+  /* Trimmed before it is tested, so a rule name that is only spaces is refused
+     rather than becoming a rule of its own that no alert will ever match. */
+  const ruleName = typeof rule === "string" ? rule.trim() : rule;
+  if (!ruleName) {
     throw new Error(`Feedback has to say which rule it is about. Without that Akeso cannot tell which of its checks was right, so the judgement was not recorded.`);
   }
   if (!VERDICTS.includes(verdict)) {
     throw new Error(`"${verdict ?? "nothing"}" is not a verdict Akeso can count, so nothing was recorded. Use "confirmed" if the alert was real, or "dismissed" if it was a false alarm.`);
   }
-  return appendEntry(root, { kind: "feedback", findingId, rule, account, verdict, note });
+  return appendEntry(root, { kind: "feedback", findingId: identityOf(findingId), rule: ruleName, account, verdict, note });
 }
 
 /* ------------------------------------------------------------- measuring */
+
+const ruleNameOf = (entry) => {
+  const name = typeof entry?.rule === "string" ? entry.rule.trim() : entry?.rule;
+  return name || UNNAMED_RULE;
+};
+
+/* Oldest first, because "the later judgement wins" means nothing without it.
+ *
+ * The order has to come out of the entries themselves and never out of the
+ * order an array happened to arrive in, or a caller holding a reversed list
+ * inverts every superseded judgement and changes standings without a line of
+ * the ledger changing. Ledger entries carry seq. Entries that never went
+ * through the ledger may only carry at. When neither is there, nothing says
+ * which came first, so arrival order is used and is not dressed up as more
+ * than it is. */
+function oldestFirst(rows) {
+  if (rows.every((row) => Number.isFinite(row.seq))) return [...rows].sort((left, right) => left.seq - right.seq);
+  if (rows.every((row) => Number.isFinite(Date.parse(row.at)))) return [...rows].sort((left, right) => Date.parse(left.at) - Date.parse(right.at));
+  return rows;
+}
+
+/* Which judgements are judgements about the same thing, so that only the last
+ * one counts.
+ *
+ * Kept per rule on purpose. A finding id is only unique inside the rule that
+ * raised it, and unscoped it lets a judgement about one rule supersede a
+ * judgement about a different rule that happens to share an id. One rule's
+ * feedback would then silently change another rule's count and its standing,
+ * and two rules' evidence must never be blended.
+ *
+ * A judgement with no id gets a key nothing else can equal. Inventing a text
+ * key for it instead lets a real finding id that looks like the invented one
+ * collide with it, and two genuine judgements folding into one is exactly the
+ * quiet loss of evidence this file exists to prevent. */
+function latestJudgementIndexes(feedback) {
+  const byRule = new Map();
+  feedback.forEach((entry, index) => {
+    const rule = ruleNameOf(entry);
+    if (!byRule.has(rule)) byRule.set(rule, new Map());
+    /* No id means nothing says what this judgement was about, so it can never
+       be superseded and never supersedes. It counts once, on its own. */
+    byRule.get(rule).set(identityOf(entry.findingId) ?? Symbol("unidentified"), index);
+  });
+  return new Set([...byRule.values()].flatMap((withinRule) => [...withinRule.values()]));
+}
 
 /* Fold the whole history into one row per rule.
  *
@@ -68,20 +129,8 @@ export async function recordFeedback(root, { findingId = null, rule, account = n
  * entry replaces the earlier one. Counting both is how a single argued-about
  * finding quietly demotes a rule. */
 export function rulePrecision(entries = []) {
-  /* Oldest first is what readLedger returns and what "later wins" depends on.
-     Sorting by seq costs nothing and stops a reversed array from silently
-     inverting every superseded judgement. */
-  const feedback = entries
-    .filter((entry) => entry?.kind === "feedback")
-    .sort((left, right) => (left.seq ?? 0) - (right.seq ?? 0));
-
-  const winnerAt = new Map();
-  feedback.forEach((entry, index) => {
-    /* A judgement with no finding id can never be superseded, because nothing
-       identifies what it was about. It counts once, on its own. */
-    winnerAt.set(entry.findingId ?? `unidentified:${entry.seq ?? index}`, index);
-  });
-  const winners = new Set(winnerAt.values());
+  const feedback = oldestFirst((entries ?? []).filter((entry) => entry?.kind === "feedback"));
+  const winners = latestJudgementIndexes(feedback);
 
   const buckets = new Map();
   const bucketFor = (rule) => {
@@ -90,7 +139,7 @@ export function rulePrecision(entries = []) {
   };
 
   feedback.forEach((entry, index) => {
-    const bucket = bucketFor(entry.rule ?? "(rule not named)");
+    const bucket = bucketFor(ruleNameOf(entry));
     if (!winners.has(index)) { bucket.superseded += 1; return; }
     if (entry.verdict === "confirmed") bucket.confirmed += 1;
     else if (entry.verdict === "dismissed") bucket.dismissed += 1;
@@ -131,9 +180,15 @@ export function ruleStanding(stats, { minimumJudged = MINIMUM_JUDGED } = {}) {
      null can never be read as good or bad. */
   if (judged === 0 || judged < minimumJudged) return "unproven";
   if (confirmed * TRUSTED_AT.judged >= judged * TRUSTED_AT.confirmed) return "trusted";
-  if (confirmed * ON_NOTICE_AT.judged >= judged * ON_NOTICE_AT.confirmed) return "on_notice";
+  if (atLeastHalfRight(stats)) return "on_notice";
   return "demoted";
 }
+
+/* The line between on notice and demoted, as whole numbers, in one place so
+   the sentences a founder reads cannot drift away from the test that decided
+   their standing. Exactly half right is on notice, so it is "at least". */
+const atLeastHalfRight = ({ confirmed = 0, judged = 0 }) =>
+  confirmed * ON_NOTICE_AT.judged >= judged * ON_NOTICE_AT.confirmed;
 
 /* The bridge between the measurement and the decision: every measured rule
    with its standing attached, ready for applyStandings and the report. */
@@ -159,7 +214,7 @@ export function applyStandings(alerts = [], standings = []) {
   const deliver = [];
   const demoted = [];
 
-  for (const alert of alerts) {
+  for (const alert of alerts ?? []) {
     const rule = alert?.rule ?? null;
     const row = rule === null ? null : byRule.get(rule) ?? null;
     const standing = row?.standing ?? ruleStanding(row);
@@ -178,7 +233,7 @@ export function applyStandings(alerts = [], standings = []) {
       continue;
     }
 
-    const note = deliveryNote(row, standing);
+    const note = deliveryNote(row, standing, rule);
     deliver.push({
       ...alert,
       standing,
@@ -218,7 +273,10 @@ export function precisionReport(stats, { minimumJudged = MINIMUM_JUDGED } = {}) 
     } else if (row.standing === "on_notice") {
       lines.push(`${name}: right ${timesRight(row)} (${percentOf(row)} percent). On notice. Akeso keeps sending these to you and keeps counting. It stops sending them if the rule drops below half right.`);
     } else {
-      lines.push(`${name}: right only ${timesRight(row)} (${percentOf(row)} percent). Demoted, so its alerts now go to the record only. It starts reaching you again as soon as it is right more than half the time.`);
+      /* "at least half", not "more than half": a rule sitting exactly on half
+         is on notice and is delivered, so promising more than half here would
+         tell the founder a rule stays silent when it will not. */
+      lines.push(`${name}: right only ${timesRight(row)} (${percentOf(row)} percent). Demoted, so its alerts now go to the record only. It starts reaching you again as soon as it is right at least half the time.`);
     }
 
     if (row.superseded > 0) {
@@ -265,7 +323,7 @@ function asRows(input) {
 }
 
 function rowFrom(rule, value) {
-  const name = String(value?.rule ?? rule ?? "(rule not named)");
+  const name = String(value?.rule ?? rule ?? UNNAMED_RULE);
   /* A caller who passed only the word "demoted" has told us the standing but
      not the measurement behind it, so the counts stay at zero and nothing
      downstream is allowed to quote a percentage for it. */
@@ -278,14 +336,27 @@ function rowFrom(rule, value) {
    that decided it. Never a number we do not have. */
 function heldBackReason(row) {
   if (!row || !row.judged) {
-    return `Held back from your alerts because this rule is demoted. Akeso was not given the measurement behind that, so no accuracy figure is claimed here. The alert is in the record, and "monitor --precision" shows the counts.`;
+    return `Held back from your alerts because this rule is demoted. Akeso was not given the measurement behind that, so no accuracy figure is claimed here. The alert is in the record, and the precision report shows the counts.`;
   }
-  return `Held back from your alerts. This rule was right only ${timesRight(row)} (${percentOf(row)} percent), which is below half right, so its alerts go to the record only. It reaches you again as soon as it is right more than half the time.`;
+  /* A standing can be handed to us alongside counts that do not support it.
+     Printing "which is below half right" over numbers that are not below half
+     is Akeso asserting something it did not measure, so the two are reported
+     apart and the founder is told plainly that they disagree. */
+  if (atLeastHalfRight(row)) {
+    return `Held back from your alerts because this rule is marked demoted. Akeso's own count says it was right ${timesRight(row)} (${percentOf(row)} percent), which is not below half right, so the marking and the count do not agree. The alert is in the record. Find out where the marking came from before trusting either one.`;
+  }
+  return `Held back from your alerts. This rule was right only ${timesRight(row)} (${percentOf(row)} percent), which is below half right, so its alerts go to the record only. It reaches you again as soon as it is right at least half the time.`;
 }
 
 /* What a delivered alert says about the rule behind it. Trusted rules say
    nothing extra; silence is the point of being trusted. */
-function deliveryNote(row, standing) {
+function deliveryNote(row, standing, rule = null) {
+  /* An alert that names no rule cannot be judged: recordFeedback refuses
+     feedback with no rule to attach it to. Asking for a judgement here would
+     be asking for something Akeso would then refuse to accept. */
+  if (rule === null) {
+    return `This alert does not come from one of the rules Akeso measures, so there is no accuracy to report for it. Akeso never holds this kind back. It always reaches you.`;
+  }
   if (standing === "unproven") {
     const judged = row?.judged ?? 0;
     const minimum = row?.minimumJudged ?? MINIMUM_JUDGED;

@@ -421,3 +421,149 @@ test("other kinds of ledger entry are never mistaken for judgements", async () =
   assert.equal(stats[0].rule, "drift");
   assert.equal(stats[0].judged, 1);
 });
+
+/* ------------------------------------------- one rule's evidence is its own */
+
+test("a judgement about one rule can never change another rule's count", () => {
+  /* Finding ids are only unique inside the rule that raised them. Folding on
+     the id alone lets one rule's feedback delete another rule's evidence and
+     move its standing, which is two rules' numbers being blended. */
+  const shared = [
+    ...Array.from({ length: MINIMUM_JUDGED }, (_, i) => (
+      { kind: "feedback", seq: i + 1, rule: "paying_but_locked_out", findingId: `f${i + 1}`, verdict: "confirmed" }
+    )),
+    { kind: "feedback", seq: 99, rule: "canceled_still_entitled", findingId: "f1", verdict: "dismissed" },
+  ];
+  const byRule = Object.fromEntries(rulePrecision(shared).map((row) => [row.rule, row]));
+
+  assert.equal(byRule.paying_but_locked_out.judged, MINIMUM_JUDGED, "the other rule's judgement did not erase one of these");
+  assert.equal(byRule.paying_but_locked_out.superseded, 0);
+  assert.equal(ruleStanding(byRule.paying_but_locked_out), "trusted", "a rule right every time stays trusted whatever another rule was judged");
+  assert.equal(byRule.canceled_still_entitled.judged, 1);
+});
+
+test("a blank finding id is not an identifier, so judgements are never folded into one", () => {
+  /* An empty string looks like an id and identifies nothing. Treated as one it
+     makes every judgement carrying it look like the same finding judged over
+     and over, and all but the last disappear from the count. */
+  const stats = rulePrecision([
+    { kind: "feedback", seq: 1, rule: "drift", findingId: "", verdict: "confirmed" },
+    { kind: "feedback", seq: 2, rule: "drift", findingId: "  ", verdict: "confirmed" },
+    { kind: "feedback", seq: 3, rule: "drift", findingId: null, verdict: "confirmed" },
+    { kind: "feedback", seq: 4, rule: "drift", findingId: "", verdict: "dismissed" },
+  ])[0];
+
+  assert.equal(stats.judged, 4, "four judgements are four pieces of evidence, not one");
+  assert.equal(stats.superseded, 0);
+  assert.equal(stats.confirmed, 3);
+});
+
+test("a finding id that looks like a made up one never collides with a judgement that has none", () => {
+  const stats = rulePrecision([
+    { kind: "feedback", seq: 1, rule: "drift", verdict: "confirmed" },
+    { kind: "feedback", seq: 2, rule: "drift", findingId: "unidentified:1", verdict: "dismissed" },
+    { kind: "feedback", seq: 3, rule: "drift", findingId: "drift anon 3", verdict: "dismissed" },
+  ])[0];
+
+  assert.equal(stats.judged, 3, "a founder cannot type a finding id that deletes someone else's judgement");
+  assert.equal(stats.superseded, 0);
+});
+
+test("the same finding judged twice under the same rule still counts once", () => {
+  /* The guard above must not have bought its safety by switching superseding
+     off, which is the easy way to make the tests above pass. */
+  const stats = rulePrecision([
+    { kind: "feedback", seq: 1, rule: "drift", findingId: "f1", verdict: "dismissed" },
+    { kind: "feedback", seq: 2, rule: "drift", findingId: " f1 ", verdict: "confirmed" },
+  ])[0];
+
+  assert.equal(stats.judged, 1);
+  assert.equal(stats.confirmed, 1, "the later judgement wins, and spacing around an id does not make a new finding");
+  assert.equal(stats.superseded, 1);
+});
+
+test("the fold takes its order from the entries, never from the array it was handed", () => {
+  /* A caller holding a newest-first list must not invert every superseded
+     judgement, because that changes standings without the ledger changing. */
+  const history = [
+    { kind: "feedback", at: "2026-01-01T00:00:00.000Z", rule: "drift", findingId: "f1", verdict: "dismissed" },
+    { kind: "feedback", at: "2026-01-02T00:00:00.000Z", rule: "drift", findingId: "f1", verdict: "confirmed" },
+  ];
+  assert.deepEqual(rulePrecision([...history].reverse()), rulePrecision(history));
+  assert.equal(rulePrecision([...history].reverse())[0].confirmed, 1, "the later judgement wins whichever end of the list it arrived on");
+
+  const bySeq = feedback("drift", { confirmed: 3, dismissed: 1 });
+  assert.deepEqual(rulePrecision([...bySeq].reverse()), rulePrecision(bySeq));
+});
+
+/* ---------------------------------------- never assert what was not measured */
+
+test("a demotion handed over with numbers that contradict it never asserts they agree", () => {
+  /* Saying "which is below half right" over nine right out of ten is Akeso
+     stating something it did not measure, in the one message whose whole job
+     is to justify silencing a warning. */
+  const { demoted } = applyStandings([alert("hand_marked")], [
+    { rule: "hand_marked", confirmed: 9, dismissed: 1, judged: 10, precision: 0.9, standing: "demoted" },
+  ]);
+
+  assert.equal(demoted.length, 1);
+  assert.doesNotMatch(demoted[0].reason, /is below half right/, "a false claim about the measurement is worse than no claim");
+  assert.match(demoted[0].reason, /do not agree/, "the founder is told the marking and the count disagree");
+  assert.match(demoted[0].reason, /9 times out of 10/, "the number Akeso actually has is still shown");
+});
+
+test("the sentence promising a rule will come back matches the line that decides it", () => {
+  /* Exactly half right is on notice and is delivered. Promising the founder
+     "more than half" describes a product that does not exist. */
+  const stats = rulePrecision(feedback("low", { confirmed: 2, dismissed: 8 }));
+  const line = precisionReport(stats)[0];
+  const { demoted } = applyStandings([alert("low")], standingsFor(stats));
+
+  assert.match(line, /at least half the time/);
+  assert.match(demoted[0].reason, /at least half the time/);
+  assert.doesNotMatch(line, /more than half/);
+  assert.doesNotMatch(demoted[0].reason, /more than half/);
+
+  const exactlyHalf = standingsFor(rulePrecision(feedback("low", { confirmed: 5, dismissed: 5 })));
+  assert.equal(applyStandings([alert("low")], exactlyHalf).deliver.length, 1, "and at exactly half it really does come back");
+});
+
+test("an alert that names no rule is never asked to be judged", async () => {
+  /* recordFeedback refuses feedback with no rule, so asking for a judgement on
+     an alert that names none asks for something Akeso would then refuse. */
+  const { deliver } = applyStandings([{ level: "urgent", title: "Akeso stopped itself" }], []);
+
+  assert.doesNotMatch(deliver[0].precisionNote, /Tell Akeso whether/);
+  assert.match(deliver[0].precisionNote, /always reaches you/, "the note says what happens next, and it is true");
+
+  const root = await scratch();
+  await assert.rejects(() => recordFeedback(root, { rule: null, verdict: "confirmed" }), /has to say which rule/);
+});
+
+test("a rule name that is only spaces is refused, never filed as a rule of its own", async () => {
+  const root = await scratch();
+  await assert.rejects(
+    () => recordFeedback(root, { findingId: "f1", rule: "   ", verdict: "confirmed" }),
+    /has to say which rule/,
+    "a rule of spaces would be measured forever and never match an alert",
+  );
+  assert.deepEqual(await readLedger(root), []);
+});
+
+test("a blank finding id is never written to the ledger as though it identified something", async () => {
+  const root = await scratch();
+  await recordFeedback(root, { findingId: "  ", rule: "drift", verdict: "confirmed" });
+  await recordFeedback(root, { findingId: "", rule: "drift", verdict: "confirmed" });
+
+  const entries = await readLedger(root);
+  assert.equal(entries[0].findingId, null, "a blank is recorded as no id at all, so it can never fold two findings together");
+  assert.equal(rulePrecision(entries)[0].judged, 2);
+});
+
+test("nothing Akeso could not read is turned into a verdict about the founder's rules", () => {
+  /* Our own missing input is our failure. It must come back as no measurement,
+     never as a crash in the middle of a sweep and never as a demotion. */
+  assert.deepEqual(rulePrecision(null), []);
+  assert.deepEqual(applyStandings(null, null), { deliver: [], demoted: [] });
+  assert.match(precisionReport(null)[0], /does not claim an accuracy/);
+});

@@ -784,7 +784,7 @@ export async function POST(request${t(": Request")}) {
 function migrationSql(detection) {
   const column = detection.database?.entitlementColumn || "billing_entitled";
   const table = detection.database?.entitlementTable || "profiles";
-  return `-- ${AKESO_MARKER} — paste this into your database's SQL editor.
+  return `-- ${AKESO_MARKER}\n-- Paste this into your database's SQL editor.
 -- Akeso never runs schema changes for you. Read it first; it only adds.
 
 -- Every Stripe event id we have already applied, so a repeat delivery is a

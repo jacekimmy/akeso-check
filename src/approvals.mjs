@@ -42,8 +42,28 @@ const msAt = (value) => {
   const ms = Date.parse(String(value ?? ""));
   return Number.isNaN(ms) ? null : ms;
 };
+
+/* The clock, in milliseconds, or nothing at all. A Date object handed in here
+   would be concatenated rather than added, and the row would be written with
+   readyAt equal to queuedAt: a removal with no cancel window, created silently.
+   Anything that is not a time we can do arithmetic on is refused instead. */
+const clockMs = (value) => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+
+/* A price is only a price if it can be printed. NaN, Infinity and a negative
+   figure all reach the founder as "$NaN a month", which is worse than silence:
+   a number Akeso cannot stand behind must not appear at all. */
+const money = (value) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null);
+
+/* Every founder-facing line is one line. The queue prints as a list, and an
+   account name or a Stripe reason carrying a newline would split one removal
+   into two rows that each look like a separate removal. */
+const oneLine = (text) => String(text).replace(/\s+/g, " ").trim();
+
 const minutesWord = (count) => `${count} minute${count === 1 ? "" : "s"}`;
-const asSentence = (text) => `${String(text).trim().replace(/[.\s]+$/, "")}.`;
+const asSentence = (text) => `${oneLine(text).replace(/[.\s]+$/, "")}.`;
 
 /* ---------------------------------------------------------------- queuing */
 
@@ -64,18 +84,31 @@ export async function queueRemoval(root, {
      line in the queue that can only confuse the person reading it. */
   if (!usable(account)) throw new Error("a queued removal must name the account it would affect");
 
-  const minutes = Number.isFinite(delayMinutes) && delayMinutes >= 0 ? delayMinutes : DEFAULT_DELAY_MINUTES;
-  const queuedAt = new Date(now).toISOString();
+  /* Without a readable clock there is no window, and a window is the whole
+     protection. Refusing costs one sweep; guessing costs a customer. */
+  const at = clockMs(now);
+  if (at === null) throw new Error("a queued removal needs the current time in milliseconds, so nothing was queued and nothing will be removed");
 
-  return appendEntry(root, {
+  /* A window at or past the expiry would queue a removal that ages out before
+     any human is allowed to approve it, and a window of billions of minutes
+     throws on the date maths instead of queuing anything. Neither is a delay we
+     can honour, so both fall back to the documented one rather than writing a
+     row that cannot work. The number actually used is stored on the entry, so
+     the window and the ledger can never disagree about it. */
+  const minutes = Number.isFinite(delayMinutes) && delayMinutes >= 0 && delayMinutes < EXPIRY_DAYS * 24 * 60
+    ? delayMinutes
+    : DEFAULT_DELAY_MINUTES;
+  const queuedAt = new Date(at).toISOString();
+
+  const entry = await appendEntry(root, {
     kind: "approval",
     id: randomUUID(),
     state: "queued",
-    account: String(account),
+    account: usable(account),
     reason,
     /* Only a price we were actually told. A missing price stays null and the
        founder-facing line simply says no dollar figure. */
-    priceMonthly: typeof priceMonthly === "number" ? priceMonthly : null,
+    priceMonthly: money(priceMonthly),
     /* What the app looked like when this was queued. The executor compares it
        against a fresh read before acting, so an account that changed in the
        meantime is skipped instead of overwritten. */
@@ -85,8 +118,17 @@ export async function queueRemoval(root, {
     ruleVersion: ruleVersion ?? null,
     delayMinutes: minutes,
     queuedAt,
-    readyAt: new Date(now + minutes * 60000).toISOString(),
+    readyAt: new Date(at + minutes * 60000).toISOString(),
   });
+
+  /* Read it back before calling it queued. A line the fold cannot see is a
+     question nobody will be asked, and telling a founder that a removal is
+     waiting on them when the queue is in fact empty is its own kind of lie. */
+  const stored = approvalState(await readLedger(root), entry.id, { now: at });
+  if (stored !== "queued" && stored !== "ready") {
+    throw new Error("Akeso wrote the queued removal but could not read it back, so nothing is queued and nothing will be removed. Look at .akeso/ledger.jsonl.");
+  }
+  return entry;
 }
 
 /* -------------------------------------------------------------- decisions */
@@ -98,7 +140,8 @@ const refusal = (id, state, message) => ({ ok: false, id, state, entry: null, co
    remove access has never been the failure that hurts anyone. */
 export async function approve(root, id, { by = null, now = Date.now() } = {}) {
   const key = usable(id);
-  const state = key ? approvalState(await readLedger(root), key, { now }) : "unknown";
+  const row = key ? foldApprovals(await readLedger(root), { now }).get(key) : undefined;
+  const state = row?.state ?? "unknown";
 
   if (state === "approved") {
     /* Not an error and not a second entry. Two taps on the same button must
@@ -110,9 +153,15 @@ export async function approve(root, id, { by = null, now = Date.now() } = {}) {
   if (state === "cancelled") return refusal(key, state, "That removal was cancelled, and a cancellation is final. Nothing was removed. Run a fresh sweep if that account should still lose access.");
   if (state === "expired") return refusal(key, state, `That removal was queued more than ${EXPIRY_DAYS} days ago and nobody answered it, so it expired. Nothing was removed. Run a fresh sweep to see whether it is still true.`);
   if (state === "queued") {
-    const row = foldApprovals(await readLedger(root), { now }).get(key);
-    const left = Math.max(1, Math.ceil(((msAt(row?.readyAt) ?? now) - now) / 60000));
-    return refusal(key, state, `That removal is still inside its cancel window for another ${minutesWord(left)}, so it cannot be approved yet. You can cancel it now, or approve it once the window ends.`);
+    const { at, readyMs, readable } = timing(row, now);
+    /* No countdown unless there is a countdown to give. A row whose timestamps
+       cannot be read would otherwise be told "another 1 minute" every minute
+       forever, which points the founder at a button that will never work. */
+    if (!readable) {
+      return refusal(key, state, "Akeso cannot read the times on that queued removal, so it will not approve it. Nothing was removed. Cancel it to clear it from the list, then run a sweep to queue it again.");
+    }
+    const left = Math.max(1, Math.ceil((readyMs - at) / 60000));
+    return refusal(key, state, `That removal is still inside its cancel window for another ${minutesWord(left)}, so it cannot be approved yet. Nothing was removed. You can cancel it now, or approve it once the window ends.`);
   }
 
   const entry = await appendEntry(root, {
@@ -120,21 +169,29 @@ export async function approve(root, id, { by = null, now = Date.now() } = {}) {
     id: key,
     state: "approved",
     by: by || null,
-    decidedAt: new Date(now).toISOString(),
+    /* Reached only when the window was proved to have passed, so the clock is
+       readable here by construction. */
+    decidedAt: new Date(clockMs(now)).toISOString(),
   });
 
   /* Read it back before saying it worked. A write we did not confirm is not a
-     result, here or anywhere else in this product. */
-  const confirmed = approvalState(await readLedger(root), key, { now }) === "approved";
+     result, here or anywhere else in this product. The state reported is the
+     one the ledger actually holds afterwards, never a placeholder: if someone
+     cancelled this a second earlier, that is the fact the founder needs, not a
+     hunt for a broken write that did not happen. */
+  const after = approvalState(await readLedger(root), key, { now });
+  const confirmed = after === "approved";
   return {
     ok: confirmed,
     id: key,
-    state: confirmed ? "approved" : "unknown",
+    state: after,
     entry,
     confirmed,
     message: confirmed
       ? `Approved${by ? ` by ${by}` : ""}. Nothing has changed in your app yet. The removal is now cleared to run, and Akeso re-reads that account afterwards to confirm it worked.`
-      : "Akeso wrote the approval but could not read it back, so it is not treating it as approved. Nothing was removed. Look at .akeso/ledger.jsonl before trying again.",
+      : after === "cancelled"
+        ? "That removal was cancelled before this approval landed, and a cancellation is final. Nothing was removed, and that account keeps its access."
+        : `Akeso wrote the approval but could not confirm it: the queue now reads that removal as ${after}. Nothing was removed. Look at .akeso/ledger.jsonl before trying again.`,
   };
 }
 
@@ -144,6 +201,10 @@ export async function approve(root, id, { by = null, now = Date.now() } = {}) {
 export async function cancel(root, id, { by = null, reason = null, now = Date.now() } = {}) {
   const key = usable(id);
   const state = key ? approvalState(await readLedger(root), key, { now }) : "unknown";
+  /* Cancelling is the safe direction, so it is allowed even when the clock or
+     the row's own timestamps are unreadable: whatever else is true here,
+     nothing gets removed. */
+  const at = clockMs(now);
 
   if (state === "cancelled") {
     return { ok: true, id: key, state: "cancelled", entry: null, confirmed: true, alreadyDone: true,
@@ -162,23 +223,39 @@ export async function cancel(root, id, { by = null, reason = null, now = Date.no
     state: "cancelled",
     by: by || null,
     reason,
-    decidedAt: new Date(now).toISOString(),
+    /* A clock we could not read is left empty rather than written as 1970. The
+       ledger stamps every line with its own time, so the fold still knows when
+       this happened without this file inventing it. */
+    decidedAt: at === null ? null : new Date(at).toISOString(),
   });
 
-  const confirmed = approvalState(await readLedger(root), key, { now }) === "cancelled";
+  const after = approvalState(await readLedger(root), key, { now });
+  const confirmed = after === "cancelled";
   return {
     ok: confirmed,
     id: key,
-    state: confirmed ? "cancelled" : "unknown",
+    state: after,
     entry,
     confirmed,
     message: confirmed
       ? "Cancelled. That account keeps its access, and Akeso will not queue this same removal again until a sweep finds it again."
-      : "Akeso wrote the cancellation but could not read it back. Treat that removal as still queued and look at .akeso/ledger.jsonl.",
+      : after === "approved"
+        ? "That removal was approved before this cancellation landed, and an approval is final. If that account should keep its access, grant it back instead: grants are instant and safe."
+        : `Akeso wrote the cancellation but could not confirm it: the queue now reads that removal as ${after}. Treat it as still queued and look at .akeso/ledger.jsonl.`,
   };
 }
 
 /* ------------------------------------------------------------- the fold */
+
+/* The three clock facts a queued removal needs before anyone can act on it.
+   Kept in one place so the sentence a founder reads and the rule the fold
+   applies can never disagree about whether a row has a future. */
+function timing(row, now) {
+  const at = clockMs(now);
+  const queuedMs = msAt(row?.queuedAt);
+  const readyMs = msAt(row?.readyAt);
+  return { at, queuedMs, readyMs, readable: at !== null && queuedMs !== null && readyMs !== null };
+}
 
 /* Derived, never stored. "ready" and "expired" are both facts about the clock,
    and writing a fact about the clock down is how a queue starts lying. */
@@ -186,14 +263,19 @@ function derive(row, now) {
   if (row.stored === "approved") return { state: "approved", ready: false };
   if (row.stored === "cancelled") return { state: "cancelled", ready: false };
 
-  const queuedMs = msAt(row.queuedAt);
-  if (queuedMs !== null && now - queuedMs >= EXPIRY_MS) return { state: "expired", ready: false };
+  const { at, queuedMs, readyMs, readable } = timing(row, now);
 
-  /* A readyAt we cannot read is not a window that has passed. Unprovable is
-     never a pass, and least of all for the one action that can lock a paying
-     customer out. */
-  const readyMs = msAt(row.readyAt);
-  const ready = readyMs !== null && now >= readyMs;
+  /* Expiry rests on queuedAt alone, so a row we can date still ages out even
+     when the rest of its timestamps are broken. */
+  if (at !== null && queuedMs !== null && at - queuedMs >= EXPIRY_MS) return { state: "expired", ready: false };
+
+  /* Ready needs all three. A readyAt we cannot read is not a window that has
+     passed, and a queuedAt we cannot read means we cannot prove the row is not
+     months stale, which is the exact thing the seven day rule exists to stop.
+     Either way the row stays visible so a human can cancel it, and stays
+     unapprovable: unprovable is never a pass, and least of all for the one
+     action that can lock a paying customer out. */
+  const ready = readable && at >= readyMs;
   return { state: ready ? "ready" : "queued", ready };
 }
 
@@ -222,7 +304,7 @@ export function foldApprovals(entries, { now = Date.now() } = {}) {
         id,
         account: entry.account ?? null,
         reason: entry.reason ?? null,
-        priceMonthly: typeof entry.priceMonthly === "number" ? entry.priceMonthly : null,
+        priceMonthly: money(entry.priceMonthly),
         expectedState: entry.expectedState ?? null,
         ruleVersion: entry.ruleVersion ?? null,
         queuedAt: entry.queuedAt ?? entry.at ?? null,
@@ -262,10 +344,24 @@ export function foldApprovals(entries, { now = Date.now() } = {}) {
    answered questions and never appear here, or the founder would be asked the
    same thing twice. */
 export function pendingApprovals(entries, { now = Date.now() } = {}) {
-  return [...foldApprovals(entries, { now }).values()]
+  const waiting = [...foldApprovals(entries, { now }).values()]
     .filter((row) => row.state === "queued" || row.state === "ready")
-    .map(({ id, account, reason, priceMonthly, queuedAt, readyAt, ready, expectedState }) =>
-      ({ id, account, reason, priceMonthly, queuedAt, readyAt, ready, expectedState }));
+    .map((row, index) => ({ row, index, queuedMs: msAt(row.queuedAt) }));
+
+  /* Oldest question first, by when the removal was queued rather than by where
+     its line landed in the file. The two agree right up until two sweeps write
+     out of order, and the founder should always be answering the longest wait.
+     A row with no readable queuedAt can never be approved, so it sorts last
+     instead of sitting at the top of the list looking urgent. */
+  waiting.sort((a, b) => {
+    if (a.queuedMs === null && b.queuedMs === null) return a.index - b.index;
+    if (a.queuedMs === null) return 1;
+    if (b.queuedMs === null) return -1;
+    return a.queuedMs - b.queuedMs || a.index - b.index;
+  });
+
+  return waiting.map(({ row: { id, account, reason, priceMonthly, queuedAt, readyAt, ready, expectedState } }) =>
+    ({ id, account, reason, priceMonthly, queuedAt, readyAt, ready, expectedState }));
 }
 
 /* Where one removal stands. An id we have never seen is "unknown", which is a
@@ -283,10 +379,14 @@ export function approvalState(entries, id, { now = Date.now() } = {}) {
 export function describeApproval(row, { now = Date.now() } = {}) {
   if (!row) return "Akeso has no record of that removal. Nothing is queued, so nothing will be removed.";
 
-  const account = usable(row.account) || "An account whose name was not recorded";
-  const because = row.reason ? ` ${asSentence(row.reason)}` : "";
-  /* A dollar figure only when Stripe actually told us the price. */
-  const price = typeof row.priceMonthly === "number" ? ` That is $${row.priceMonthly.toFixed(2)} a month at list price.` : "";
+  const account = usable(row.account) ? oneLine(row.account) : "An account whose name was not recorded";
+  /* Account names and Stripe reasons are somebody else's text. Folded onto one
+     line here so a newline in either cannot split one removal into two rows a
+     founder reads as two removals. */
+  const because = usable(row.reason) ? ` ${asSentence(row.reason)}` : "";
+  /* A dollar figure only when Stripe actually told us a price we can print. */
+  const amount = money(row.priceMonthly);
+  const price = amount === null ? "" : ` That is $${amount.toFixed(2)} a month at list price.`;
   const state = row.state || (row.ready ? "ready" : "queued");
 
   if (state === "approved") {
@@ -302,6 +402,13 @@ export function describeApproval(row, { now = Date.now() } = {}) {
     return `${account} still has paid access.${because}${price} Approve it to take that access away, or cancel it. Nothing is removed until you choose.`;
   }
 
-  const left = Math.max(1, Math.ceil(((msAt(row.readyAt) ?? now) - now) / 60000));
+  const { at, readyMs, readable } = timing(row, now);
+  /* A countdown is only printed when there is one to give. "Another 1 minute"
+     on a row whose timestamps cannot be read repeats the same minute forever
+     and sends the founder back to a button that will never work. */
+  if (!readable) {
+    return `${account} still has paid access.${because}${price} Akeso cannot read the times on this queued removal, so it will not offer to approve it. Cancel it to clear it from the list, then run a sweep to queue it again.`;
+  }
+  const left = Math.max(1, Math.ceil((readyMs - at) / 60000));
   return `${account} still has paid access.${because}${price} You can cancel this now. It cannot be approved for another ${minutesWord(left)}, and nothing is removed until you approve it.`;
 }

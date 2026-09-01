@@ -44,10 +44,12 @@ const NOTHING_SENT = "Nothing was sent to your app, so nothing was changed.";
    HMAC-SHA256 over "<timestamp>.<body>", with the secret used VERBATIM as the
    key. One signing story in this product, not two, because the second one is
    always the one nobody reviews. */
+const hexSignature = (bodyString, secret, timestamp) =>
+  createHmac("sha256", secret).update(`${timestamp}.${bodyString}`).digest("hex");
+
 export function signRequest(bodyString, secret, timestamp = Math.floor(Date.now() / 1000)) {
   if (!secret) throw new Error("a restore request cannot be signed without a restore secret");
-  const signature = createHmac("sha256", secret).update(`${timestamp}.${bodyString}`).digest("hex");
-  return `t=${timestamp},v1=${signature}`;
+  return `t=${timestamp},v1=${hexSignature(bodyString, secret, timestamp)}`;
 }
 
 /* timingSafeEqual throws when the two buffers differ in length, and a signature
@@ -67,6 +69,12 @@ function equalConstantTime(left, right) {
    from the docs. */
 export function verifyRequest(bodyString, header, secret, { toleranceSeconds = DEFAULT_TOLERANCE_SECONDS, now = Date.now() } = {}) {
   if (!secret) return { valid: false, reason: "no restore secret is configured on this side" };
+  /* The commonest way to get this wrong in a web framework: handing over the
+     PARSED body instead of the raw text it arrived as. Coercing it would sign
+     the string "[object Object]", so every real request would fail for a reason
+     that names the signature rather than the mistake, and two different bodies
+     would coerce to the same bytes. Named here instead. */
+  if (typeof bodyString !== "string") return { valid: false, reason: "the request body was not handed over as the raw text it arrived as, so there is nothing to check the signature against" };
   if (typeof header !== "string" || header.trim() === "") return { valid: false, reason: "no signature was sent with the request" };
 
   const fields = {};
@@ -80,9 +88,13 @@ export function verifyRequest(bodyString, header, secret, { toleranceSeconds = D
 
   /* Signed against the timestamp exactly as it arrived, not against the number
      it parses to: "0300" and "300" are different bytes and must not both
-     verify against one signature. */
-  const expected = signRequest(bodyString, secret, fields.t);
-  if (!equalConstantTime(fields.v1, expected.slice(expected.indexOf("v1=") + 3))) {
+     verify against one signature.
+
+     Compared against the hex itself rather than against a slice of a rebuilt
+     header. A header carries attacker-chosen text, and cutting the expected
+     value back out of a string that text helped build is a puzzle nobody
+     should have to re-solve every time this file is read. */
+  if (!equalConstantTime(fields.v1, hexSignature(bodyString, secret, fields.t))) {
     return { valid: false, reason: "the signature does not match the request body" };
   }
 
@@ -102,12 +114,16 @@ export function verifyRequest(bodyString, header, secret, { toleranceSeconds = D
 
 /* The request body, built in one place so a planned restore and a sent restore
    can never disagree about what was asked for. */
-function requestBody({ account, direction, target, expected, reasonCode, idempotencyKey, ruleVersion, windowKey, dryRun }) {
+function requestBody({ account, direction, target, expected, reasonCode, idempotencyKey, approvalId, ruleVersion, windowKey, dryRun }) {
   return {
     akesoProtocol: RESTORE_PROTOCOL,
     account: String(account),
     direction,
     target,
+    /* Which human said yes. Only removals need one, and the app gets told which
+       approval it is acting on so the founder can match a change in their own
+       logs to the tap that authorised it. */
+    ...(approvalId === undefined || approvalId === null ? {} : { approvalId: String(approvalId) }),
     /* null means "do not check": the app applies the change whatever it reads.
        A boolean means "only if it still reads like this", which is what turns a
        lost race into a loud conflict instead of a silent overwrite. */
@@ -128,7 +144,7 @@ function requestBody({ account, direction, target, expected, reasonCode, idempot
  * key. Remote idempotency records expire (Stripe's are kept for 24 hours), so
  * nothing here relies on the far side remembering: the ledger is the durable
  * record of what we asked for and what came back. */
-export function planRestore({ account, direction, expectedState = null, ruleVersion = "1", windowKey, reasonCode = "restore:unspecified", dryRun = false } = {}) {
+export function planRestore({ account, direction, expectedState = null, ruleVersion = "1", windowKey, reasonCode = "restore:unspecified", approvalId = null, dryRun = false } = {}) {
   if (!account) throw new Error("a restore needs the account it is about");
   if (direction !== "grant" && direction !== "remove") {
     throw new Error(`a restore direction must be "grant" or "remove", not ${JSON.stringify(direction ?? null)}`);
@@ -152,6 +168,7 @@ export function planRestore({ account, direction, expectedState = null, ruleVers
     expected: expectedState,
     reasonCode,
     idempotencyKey: `akeso-${direction}-${fingerprint}`,
+    approvalId,
     ruleVersion,
     windowKey,
     dryRun,
@@ -185,29 +202,42 @@ function scrubbed(outcome, secret) {
 
 /* -------------------------------------------------------------- the send */
 
-/* One POST, with a deadline we enforce ourselves rather than trusting the
-   caller's fetch to have one. A restore that hangs forever holds up a sweep,
-   and a sweep that never finishes is a monitor that stopped monitoring. */
-async function postSigned(endpoint, init, fetchImpl, timeoutMs) {
+/* One deadline over the WHOLE exchange, not just the connection.
+ *
+ * A deadline that stops at the response headers is not a deadline: a server can
+ * answer in a millisecond and then take forever to send the body, and the
+ * clock is no longer running on it. That is what a dying container does, and
+ * what a proxy holding a half-open connection does. A restore that hangs
+ * forever holds up a sweep, and a sweep that never finishes is a monitor that
+ * stopped monitoring, which is the failure nobody notices for a week. */
+function withDeadline(timeoutMs) {
   const controller = new AbortController();
   let fail;
-  const deadline = new Promise((_resolve, reject) => { fail = reject; });
+  const expired = new Promise((_resolve, reject) => { fail = reject; });
+  /* Insurance, not a load-bearing guard: today every path races this promise
+     before the timer can fire, and a raced promise counts as handled however
+     late it settles. It is here so that a future edit which stops racing it,
+     or returns early before the first race, cannot turn a timeout we were
+     about to report calmly into an unhandled rejection. */
+  expired.catch(() => {});
   const timer = setTimeout(() => {
     controller.abort();
     fail(new Error(`your app did not answer within ${timeoutMs}ms`));
   }, timeoutMs);
 
-  const attempt = Promise.resolve().then(() => fetchImpl(endpoint, { ...init, signal: controller.signal }));
-  /* The losing side of the race still settles. Without this, a fetch that
-     rejects after the deadline already fired becomes an unhandled rejection
-     and can take the whole process down. */
-  attempt.catch(() => {});
-
-  try {
-    return await Promise.race([attempt, deadline]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return {
+    signal: controller.signal,
+    race(work) {
+      const attempt = Promise.resolve().then(work);
+      /* Same insurance for the losing side, which settles long after the race
+         is over: a fetch that rejects once we have already given up on it.
+         Promise.race attaches its own handler, so this is not what keeps that
+         rejection from going unhandled today. */
+      attempt.catch(() => {});
+      return Promise.race([attempt, expired]);
+    },
+    done() { clearTimeout(timer); },
+  };
 }
 
 async function readBody(response) {
@@ -229,6 +259,7 @@ export async function restoreEntitlement({
   direction,
   reasonCode = "restore:unspecified",
   idempotencyKey,
+  approvalId = null,
   ruleVersion = "1",
   windowKey,
   dryRun = false,
@@ -247,6 +278,7 @@ export async function restoreEntitlement({
     dryRun: Boolean(dryRun),
     reasonCode,
     idempotencyKey: idempotencyKey || null,
+    approvalId: approvalId || null,
     before: null,
     after: null,
     beforeEntitled: null,
@@ -263,13 +295,24 @@ export async function restoreEntitlement({
   const refuse = (reason) => finish({ result: "could_not_reach", reason: `${reason} ${NOTHING_SENT}` });
 
   /* Nothing left this process for any of these, so "nothing changed" is a
-     measurement here, not an assumption. */
-  if (!endpoint) return refuse("Akeso has no restore endpoint for this app.");
-  if (!secret) return refuse("Akeso has no restore secret for this app.");
-  if (typeof fetchImpl !== "function") return refuse("This Node build has no fetch available.");
-  if (!base.account) return refuse("No account was given.");
-  if (resolvedTarget === null) return refuse("No target state was given, and Akeso will not guess which way to move an account.");
-  if (!base.idempotencyKey) return refuse("No idempotency key was given, and a write without one turns a retry into a second write.");
+     measurement here, not an assumption. Each one is a fault in Akeso or in how
+     it was set up, and each says so: a founder reading these must not go
+     looking for a bug in their own app. */
+  if (!endpoint) return refuse("Akeso has not been told where your app's restore endpoint is, so it did not try.");
+  if (!secret) return refuse("Akeso has no shared secret for your app's restore endpoint, so it could not prove a request came from Akeso and did not send one.");
+  if (typeof fetchImpl !== "function") return refuse("This copy of Akeso cannot make web requests at all, which is a fault in Akeso and not a problem with your app.");
+  if (!base.account) return refuse("Akeso was asked to change access without being told whose access it is, which is a fault in Akeso and not a problem with your app.");
+  if (resolvedTarget === null) return refuse("Akeso was not told whether this account should end up with access or without it, and Akeso will not guess which way to move an account.");
+  if (!base.idempotencyKey) return refuse("Akeso had no retry label for this change, and without one a retry could be applied a second time, which is a fault in Akeso and not a problem with your app.");
+  /* Doctrine, and the reason this file exists at all: a wrong grant costs a few
+     dollars, a wrong removal locks a paying customer out of what they paid for.
+     Removals wait for a person (src/approvals.mjs), and the way this module
+     knows a person said yes is that their approval is named here. No exception
+     for a dry run: the one thing a dry run cannot rely on is the app honouring
+     dryRun, and that is exactly the case this refusal is protecting. */
+  if (resolvedDirection === "remove" && !approvalId) {
+    return refuse("Akeso does not take access away without a person approving it first, and no approval was named for this one.");
+  }
 
   const body = requestBody({
     account: base.account,
@@ -278,48 +321,58 @@ export async function restoreEntitlement({
     expected: expectedState !== undefined ? expectedState : (expected !== undefined ? expected : null),
     reasonCode,
     idempotencyKey: base.idempotencyKey,
+    approvalId: base.approvalId,
     ruleVersion,
     windowKey,
     dryRun,
   });
   const bodyString = JSON.stringify(body);
 
-  let response;
-  try {
-    response = await postSigned(endpoint, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        /* The signature travels. The secret does not, ever. */
-        "akeso-signature": signRequest(bodyString, secret),
-        "idempotency-key": base.idempotencyKey,
-        "user-agent": "akeso-check",
-      },
-      body: bodyString,
-    }, fetchImpl, timeoutMs);
-  } catch (error) {
-    /* Ours, not theirs. The request may have arrived and been applied before
-       the connection died, so this reports an unknown outcome and never a
-       verdict about the app. */
-    return finish({
-      result: "could_not_reach",
-      outcomeKnown: false,
-      reason: `Akeso could not complete the call to your app: ${error?.message || String(error)}. ${UNKNOWN}`,
-    });
-  }
-
-  const httpStatus = typeof response?.status === "number" ? response.status : null;
-
+  const deadline = withDeadline(timeoutMs);
+  let httpStatus = null;
   let text;
   try {
-    text = await readBody(response);
-  } catch (error) {
-    return finish({
-      result: "could_not_reach",
-      outcomeKnown: false,
-      httpStatus,
-      reason: `Your app answered${httpStatus === null ? "" : ` ${httpStatus}`} but the answer could not be read: ${error?.message || String(error)}. ${UNKNOWN}`,
-    });
+    let response;
+    try {
+      response = await deadline.race(() => fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          /* The signature travels. The secret does not, ever. */
+          "akeso-signature": signRequest(bodyString, secret),
+          "idempotency-key": base.idempotencyKey,
+          "user-agent": "akeso-check",
+        },
+        body: bodyString,
+        signal: deadline.signal,
+      }));
+    } catch (error) {
+      /* Ours, not theirs. The request may have arrived and been applied before
+         the connection died, so this reports an unknown outcome and never a
+         verdict about the app. */
+      return finish({
+        result: "could_not_reach",
+        outcomeKnown: false,
+        reason: `Akeso could not complete the call to your app: ${error?.message || String(error)}. ${UNKNOWN}`,
+      });
+    }
+
+    httpStatus = typeof response?.status === "number" ? response.status : null;
+
+    /* Still on the same clock. An app that sends headers and then stalls the
+       body has not answered, whatever the status line said. */
+    try {
+      text = await deadline.race(() => readBody(response));
+    } catch (error) {
+      return finish({
+        result: "could_not_reach",
+        outcomeKnown: false,
+        httpStatus,
+        reason: `Your app answered${httpStatus === null ? "" : ` ${httpStatus}`} but the answer could not be read: ${error?.message || String(error)}. ${UNKNOWN}`,
+      });
+    }
+  } finally {
+    deadline.done();
   }
 
   let answer = null;
@@ -339,6 +392,22 @@ export async function restoreEntitlement({
 
   const claimed = typeof answer.result === "string" ? answer.result : "";
   const appReason = typeof answer.reason === "string" && answer.reason.trim() ? answer.reason.trim() : null;
+
+  /* An answer about somebody else is not an answer about this account. A cache,
+     a load balancer or an off-by-one in their handler can hand back another
+     account's response, and believing it would record a confirmed change on the
+     strength of a state we never asked about. Only checked when the app names
+     an account, because not every endpoint will, and neither that account's
+     state nor this one's is carried out of here. */
+  const echoed = typeof answer.account === "string" ? answer.account : null;
+  if (echoed !== null && echoed !== base.account) {
+    return finish({
+      result: "could_not_reach",
+      outcomeKnown: false,
+      httpStatus,
+      reason: `Akeso asked about account ${base.account} and your app answered about account ${echoed}, so this answer says nothing about either of them. ${UNKNOWN}`,
+    });
+  }
   const before = answer.before ?? null;
   const after = answer.after ?? null;
   const beforeEntitled = entitledFrom(before);
@@ -365,7 +434,9 @@ export async function restoreEntitlement({
       ...seen,
       result: "failed",
       outcomeKnown: false,
-      reason: `Your app was asked for a dry run and reported that it applied the change. A dry run must change nothing, so your restore endpoint is not honouring dryRun. Stop using --apply against this app and read this account now, because it may really have been changed.`,
+      /* The loudest message in the product, so it is said in words a founder
+         can act on at 3am: no field names, and one instruction, not two. */
+      reason: `Your app was asked to preview this change without making it, and it answered that it made the change. A preview must change nothing, so the restore endpoint in your app is ignoring the request to only preview. Do not run this with --apply against this app until that is fixed. It may really have been changed, so read this account before trying again.`,
     });
   }
   if (dryRun && beforeEntitled !== null && afterEntitled !== null && beforeEntitled !== afterEntitled) {
@@ -373,7 +444,7 @@ export async function restoreEntitlement({
       ...seen,
       result: "failed",
       outcomeKnown: false,
-      reason: `Your app was asked for a dry run and reported the account in one state before and a different one after. A dry run must change nothing. Read this account now, and do not run this again with --apply until your restore endpoint is fixed.`,
+      reason: `Your app was asked to preview this change without making it, and it reported the account in one state before and a different one after. A preview must change nothing. Do not run this with --apply against this app until your restore endpoint is fixed, and read this account before trying again.`,
     });
   }
 
@@ -414,6 +485,12 @@ export async function restoreEntitlement({
 
   if (claimed === "no_op") {
     const state = afterEntitled === null ? beforeEntitled : afterEntitled;
+    /* The same bar as "applied", for the same reason. "Nothing needed changing"
+       is still a claim about the account's state right now, and an app can send
+       it from a cached row it read minutes ago. Marking it confirmed without
+       the app saying it re-read would make a pass available for the wrong
+       reason, which is the one thing a positive control must never allow. */
+    const confirmed = answer.verified === true;
     /* A dry run legitimately reports a state that differs from the target: that
        is the preview, not a contradiction. Only a real run gets checked here. */
     if (!dryRun && state !== null && state !== resolvedTarget) {
@@ -433,13 +510,20 @@ export async function restoreEntitlement({
         reason: `Your app said nothing needed changing but did not report the account's state, so this was not confirmed. Read the account yourself before relying on it.`,
       });
     }
+    if (!dryRun && !confirmed) {
+      return finish({
+        ...seen,
+        result: "no_op",
+        reason: `Your app said nothing needed changing and reported this account at ${stateWord(state)}, but it did not confirm that by reading the account back, so this was not confirmed. Read the account yourself before relying on it.`,
+      });
+    }
     return finish({
       ...seen,
       result: "no_op",
       verified: !dryRun && state === resolvedTarget,
       reason: dryRun
         ? `Nothing was changed. This was a dry run.`
-        : `Nothing needed changing. Your app already had this account at ${stateWord(resolvedTarget)}.`,
+        : `Nothing needed changing. Your app already had this account at ${stateWord(resolvedTarget)} and read it back to confirm.`,
     });
   }
 
@@ -470,6 +554,19 @@ export async function restoreEntitlement({
 
 /* ------------------------------------------------------------- receipts */
 
+/* The reason on an outcome is already a whole message, and most of them end
+   with the next step. Bolting a second copy of that step onto the end reads as
+   two separate instructions and makes a founder wonder which one is theirs, so
+   a tail is only added when it is not already there. */
+function ending(text, tail) {
+  const flat = (value) => String(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const body = String(text ?? "").trim();
+  if (!body) return tail;
+  return flat(body).includes(flat(tail)) ? body : `${body} ${tail}`;
+}
+
+const READ_IT = "Read this account before trying again.";
+
 /* One line a founder can read without help: what we saw, what changed, and
    whether anyone checked afterwards. Every line ends with what happens next,
    because a receipt that leaves someone wondering is a support ticket. */
@@ -479,21 +576,39 @@ export function describeOutcome(outcome) {
   const who = `Account ${outcome.account ?? "unknown"}`;
   const wanted = stateWord(outcome.target);
   const saw = stateWord(outcome.beforeEntitled);
-  const reason = outcome.reason ? String(outcome.reason) : "";
+  const reason = outcome.reason ? String(outcome.reason).trim() : "";
 
   if (outcome.result === "could_not_reach") {
+    /* The reason already says that nothing was sent and nothing changed, so the
+       line is the reason, not the reason plus another sentence saying it. */
     return outcome.outcomeKnown
-      ? `${who}: nothing was sent to your app, so nothing changed. ${reason}`
-      : `${who}: Akeso could not get a usable answer from your app. The change may or may not have happened. Read this account before trying again.`;
+      ? `${who}: ${ending(reason, "Nothing was sent to your app, so nothing was changed.")}`
+      : `${who}: Akeso could not get a usable answer from your app. The change may or may not have happened. ${READ_IT}`;
   }
 
   if (outcome.dryRun) {
-    if (outcome.result === "failed") return `${who}: DRY RUN PROBLEM. ${reason}`;
+    if (outcome.result === "failed") return `${who}: DRY RUN PROBLEM. ${ending(reason, READ_IT)}`;
     if (outcome.result === "unsupported") return `${who}: dry run only, nothing was changed. On a real run your app would refuse this one. ${reason}`;
     if (outcome.result === "conflict") return `${who}: dry run only, nothing was changed. Your app reports the account has moved since Akeso read it, so it would refuse a real run too.`;
-    if (outcome.wouldChange === true) return `${who}: dry run only, nothing was changed. Akeso saw ${saw}, and a real run would set it to ${wanted}.`;
-    if (outcome.wouldChange === false) return `${who}: dry run only, nothing was changed. Your app already has this account at ${wanted}, so a real run would change nothing.`;
-    return `${who}: dry run only, nothing was changed. Your app did not report the account's state, so Akeso cannot say what a real run would do.`;
+
+    /* The preview, said from the state the app actually reported rather than
+       from its verdict about that state. When the two disagree the disagreement
+       IS the finding: a wrong preview is how somebody approves a real run that
+       does the opposite of what they were shown.
+       An inferred wouldChange can never disagree with the state it was inferred
+       from, so a disagreement here is proof the app sent its own. */
+    const state = typeof outcome.beforeEntitled === "boolean" ? outcome.beforeEntitled : null;
+    if (state !== null && typeof outcome.wouldChange === "boolean" && outcome.wouldChange !== (state !== outcome.target)) {
+      return `${who}: dry run only, nothing was changed. Your app reports this account at ${saw} and Akeso asked for ${wanted}, but your app also says a real run would ${outcome.wouldChange ? "change it" : "change nothing"}. Those cannot both be true, so Akeso cannot say what a real run would do. Read the account yourself, and fix your restore endpoint before running this with changes turned on.`;
+    }
+    if (state !== null) {
+      return state === outcome.target
+        ? `${who}: dry run only, nothing was changed. Your app already has this account at ${wanted}, so a real run would have nothing to change.`
+        : `${who}: dry run only, nothing was changed. Akeso saw ${saw}, so a real run would ask your app to set it to ${wanted}.`;
+    }
+    if (outcome.wouldChange === true) return `${who}: dry run only, nothing was changed. Your app says a real run would change this account, but it did not report what the account reads as now, so Akeso cannot show you the change. ${READ_IT}`;
+    if (outcome.wouldChange === false) return `${who}: dry run only, nothing was changed. Your app says a real run would change nothing, but it did not report what the account reads as now, so Akeso could not check that. ${READ_IT}`;
+    return `${who}: dry run only, nothing was changed. Your app did not report the account's state, so Akeso cannot say what a real run would do. ${READ_IT}`;
   }
 
   if (outcome.result === "applied") {
@@ -501,16 +616,19 @@ export function describeOutcome(outcome) {
   }
   if (outcome.result === "no_op") {
     return outcome.verified
-      ? `${who}: already at ${wanted}, so nothing was changed. Confirmed by reading the account.`
+      ? `${who}: already at ${wanted}, so nothing was changed. Confirmed by reading the account. Nothing more to do.`
       : `${who}: your app said nothing needed changing, but it was not confirmed. Read the account yourself before relying on it.`;
   }
   if (outcome.result === "conflict") {
     return `${who}: nothing was changed, because the account moved between Akeso reading it and writing to it. Akeso will see it again on the next sweep.`;
   }
   if (outcome.result === "unsupported") {
-    return `${who}: your app refused this one on purpose, so nothing was changed. ${reason} That refusal is your app's own rule, so change it there if it is wrong.`;
+    return `${who}: ${ending(reason, "Nothing was changed.")} That refusal is your app's own rule, so change it there if it is wrong.`;
   }
-  return `${who}: Akeso asked for ${wanted} and it was not confirmed. ${reason} Read this account before trying again.`;
+  /* Every reason on this path already names what was asked for and what came
+     back, so a lead-in saying it again stutters at the reader. The lead-in only
+     appears when there is no reason to carry the line. */
+  return `${who}: ${reason ? ending(reason, READ_IT) : `Akeso asked for ${wanted} and it was not confirmed. ${READ_IT}`}`;
 }
 
 /* ------------------------------------------------------- into the ledger */
@@ -522,30 +640,46 @@ export function describeOutcome(outcome) {
  * back next month without them looks like "nothing happened", which is the one
  * thing it does not mean. */
 export function restoreLedgerEntry(outcome) {
+  /* Anything that is not one of our outcomes is written down as a restore we
+     cannot describe, rather than throwing. A caller in the middle of a sweep
+     needs the attempt recorded; an exception here would lose the record of the
+     very thing that went wrong. */
+  const seen = outcome && typeof outcome === "object" ? outcome : {};
   return {
     kind: "restore",
-    account: outcome.account,
-    direction: outcome.direction,
-    reasonCode: outcome.reasonCode,
-    idempotencyKey: outcome.idempotencyKey,
-    result: outcome.result,
-    before: outcome.beforeEntitled,
-    after: outcome.afterEntitled,
-    verified: Boolean(outcome.verified),
-    outcomeKnown: outcome.outcomeKnown !== false,
-    dryRun: Boolean(outcome.dryRun),
-    reason: outcome.reason ?? null,
-    httpStatus: outcome.httpStatus ?? null,
+    account: seen.account ?? null,
+    direction: seen.direction ?? null,
+    reasonCode: seen.reasonCode ?? null,
+    /* Which human authorised it. Null on a grant, and on a removal it is the
+       only durable evidence that a person said yes. */
+    approvalId: seen.approvalId ?? null,
+    idempotencyKey: seen.idempotencyKey ?? null,
+    result: seen.result ?? null,
+    before: seen.beforeEntitled ?? null,
+    after: seen.afterEntitled ?? null,
+    verified: seen.verified === true,
+    /* Known only when the outcome said so. An outcome that never recorded
+       whether it knew is not evidence that it knew, and defaulting it to true
+       is how "we have no idea what happened" reads as "nothing happened" a
+       month later. */
+    outcomeKnown: seen.outcomeKnown === true,
+    dryRun: seen.dryRun === true,
+    reason: seen.reason ?? null,
+    httpStatus: seen.httpStatus ?? null,
   };
 }
 
 /* The adapter runSweep expects: restore(account, target, { expected, reasonCode,
    idempotencyKey }). Everything about WHERE to write and HOW to sign is bound
-   once, here, so the sweep never handles the secret at all. */
+   once, here, so the sweep never handles the secret at all.
+ *
+ * `approvalId` rides in the same options bag. A sweep that only grants never
+ * passes one and never needs one; a removal without one is refused before
+ * anything is sent. */
 export function restoreVia({ endpoint, secret, ruleVersion = "1", dryRun = false, fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  return (account, target, { expected = null, reasonCode = "restore:unspecified", idempotencyKey, windowKey } = {}) =>
+  return (account, target, { expected = null, reasonCode = "restore:unspecified", idempotencyKey, approvalId = null, windowKey } = {}) =>
     restoreEntitlement({
       endpoint, secret, account, target, expectedState: expected,
-      reasonCode, idempotencyKey, ruleVersion, windowKey, dryRun, fetchImpl, timeoutMs,
+      reasonCode, idempotencyKey, approvalId, ruleVersion, windowKey, dryRun, fetchImpl, timeoutMs,
     });
 }

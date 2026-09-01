@@ -11,7 +11,7 @@
       },
       {
         "id": "s2",
-        "is_pro": false,
+        "is_pro": true,
         "admin_block": false,
         "abuse_block": false,
         "complimentary_access": false,
@@ -27,7 +27,7 @@
       },
       {
         "id": "s4",
-        "is_pro": true,
+        "is_pro": false,
         "admin_block": false,
         "abuse_block": false,
         "complimentary_access": false,
@@ -35,7 +35,7 @@
       },
       {
         "id": "s5",
-        "is_pro": true,
+        "is_pro": false,
         "admin_block": false,
         "abuse_block": false,
         "complimentary_access": false,
@@ -43,7 +43,7 @@
       },
       {
         "id": "s6",
-        "is_pro": true,
+        "is_pro": false,
         "admin_block": false,
         "abuse_block": false,
         "complimentary_access": false,
@@ -59,7 +59,7 @@
       },
       {
         "id": "s8",
-        "is_pro": true,
+        "is_pro": false,
         "admin_block": false,
         "abuse_block": false,
         "complimentary_access": false,
@@ -67,7 +67,7 @@
       },
       {
         "id": "s9",
-        "is_pro": true,
+        "is_pro": false,
         "admin_block": false,
         "abuse_block": false,
         "complimentary_access": false,
@@ -75,7 +75,7 @@
       },
       {
         "id": "s10",
-        "is_pro": true,
+        "is_pro": false,
         "admin_block": false,
         "abuse_block": false,
         "complimentary_access": false,
@@ -98,7 +98,145 @@
         "billing_override": false
       }
     ],
-    "akeso_processed_events": [],
-    "akeso_event_watermarks": []
+    "akeso_processed_events": [
+      {
+        "event_id": "evt_akeso_1788235312893_25_973f4443",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_26_6bde84d9",
+        "event_type": "customer.subscription.created"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_27_310e9af4",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_28_1083c50e",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_29_e1358e57",
+        "event_type": "invoice.paid"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_30_169e759e",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_31_bec0c0f7",
+        "event_type": "invoice.payment_failed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_32_7984cdef",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_33_061d5778",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_34_9b2e6523",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_35_221d99c3",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_36_d0cf15d7",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_37_d9e60716",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_38_b9dfa394",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_39_eb3074bb",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_40_b41aa3db",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_41_1444bd2b",
+        "event_type": "customer.subscription.updated"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_42_08c8b801",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_43_d1dad411",
+        "event_type": "charge.refunded"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_45_17d9d64c",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_44_f19cd415",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_46_f5a741c7",
+        "event_type": "checkout.session.completed"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_47_5c8ea0fd",
+        "event_type": "customer.subscription.deleted"
+      },
+      {
+        "event_id": "evt_akeso_1788235312893_48_87100c72",
+        "event_type": "customer.subscription.updated"
+      }
+    ],
+    "akeso_event_watermarks": [
+      {
+        "account_id": "s1",
+        "last_event_created": 1788235192
+      },
+      {
+        "account_id": "s2",
+        "last_event_created": 1788235203
+      },
+      {
+        "account_id": "s3",
+        "last_event_created": 1788235213
+      },
+      {
+        "account_id": "s4",
+        "last_event_created": 1788235225
+      },
+      {
+        "account_id": "s5",
+        "last_event_created": 1788235234
+      },
+      {
+        "account_id": "s6",
+        "last_event_created": 1788235243
+      },
+      {
+        "account_id": "s7",
+        "last_event_created": 1788235254
+      },
+      {
+        "account_id": "s8",
+        "last_event_created": 1788235263
+      },
+      {
+        "account_id": "s9",
+        "last_event_created": 1788235273
+      },
+      {
+        "account_id": "s10",
+        "last_event_created": 1788235284
+      }
+    ]
   }
 }
