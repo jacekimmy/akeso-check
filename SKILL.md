@@ -19,3 +19,11 @@ transmitted anywhere; every credential stays in their env files.
    exists, say so and stop at static analysis.
 5. Open the report for the user and summarise the grade in one sentence of
    plain English. Do not soften an F.
+6. If the grade is not A, offer the repair: `npx akeso-check fix` previews it and
+   changes nothing; `--apply --verify-url http://localhost:<port>` writes it,
+   proves it with the same test, and reverts automatically if the proof fails.
+   Never apply without showing the preview first.
+7. If the grade is A, the next step is the monitor (`certify`, then `monitor`).
+   Explain in one sentence that correct code from now on does not fix accounts
+   that already drifted, which is what the monitor is for. Every command ends
+   by naming the next one; follow that rather than inventing a sequence.
