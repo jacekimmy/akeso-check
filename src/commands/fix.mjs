@@ -205,7 +205,7 @@ async function verifyRepair(root, baseUrl, account) {
   const webhookUrl = webhookUrlFor(detection, base);
 
   let probeUrl = null;
-  for (const candidate of [`${base}/api/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`]) {
+  for (const candidate of [`${base}/api/akeso-probe`, `${base}/functions/v1/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`]) {
     const answers = await fetch(`${candidate}?account=${encodeURIComponent(account || "00000000-0000-0000-0000-000000000000")}`, { signal: AbortSignal.timeout(4000) })
       .then((response) => response.ok).catch(() => false);
     if (answers) { probeUrl = candidate; break; }

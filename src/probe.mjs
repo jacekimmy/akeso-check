@@ -205,6 +205,14 @@ export async function removeProbe(routeFile) {
   const content = await readFile(routeFile, "utf8").catch(() => null);
   if (content === null) return { removed: false, reason: "already gone" };
   if (!content.includes(MARKER)) return { removed: false, reason: "file no longer carries the Akeso marker — leaving it alone" };
+  /* An edge probe is a whole function directory watched by `supabase
+     functions serve`. Removing the file and then the directory gave the
+     watcher a moment where the directory existed without its file, and the
+     CLI's serve process died reading it. One removal, one event. */
+  if (path.basename(path.dirname(routeFile)) === "akeso-probe" && routeFile.includes(`${path.sep}supabase${path.sep}functions${path.sep}`)) {
+    await rm(path.dirname(routeFile), { recursive: true, force: true });
+    return { removed: true };
+  }
   await rm(routeFile);
   /* tidy the wrapper dir Next requires, only if we created it and it is now empty */
   const dir = path.dirname(routeFile);
