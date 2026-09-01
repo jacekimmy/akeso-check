@@ -1,13 +1,18 @@
 {
   "name": "akeso-check",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Prove whether your app grants and revokes paid access correctly. Runs on your machine; nothing leaves it.",
   "type": "module",
   "bin": {
     "akeso-check": "bin/akeso-check.mjs"
   },
   "license": "MIT",
-  "files": ["bin", "src", "README.md", "SKILL.md"],
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "SKILL.md"
+  ],
   "keywords": [
     "stripe",
     "billing",
