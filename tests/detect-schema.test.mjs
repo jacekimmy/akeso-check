@@ -108,3 +108,25 @@ model Post { id String @id  title String  body String }
   const { database } = await detect(root);
   assert.equal(database.tableConfirmed, false, "no evidence means the default is admitted, not claimed");
 });
+
+test("the named form, @map(name: \"...\"), is the one real schemas use", async () => {
+  /* mickasmt/next-saas-stripe-starter, 3,000 stars, writes every map this
+     way. The bare-string form passed the tests while the real file resolved
+     to the Prisma field name and a table Postgres does not have. */
+  const root = await project({
+    "prisma/schema.prisma": `
+model User {
+  id                     String    @id @default(cuid())
+  stripeCustomerId       String?   @unique @map(name: "stripe_customer_id")
+  stripeSubscriptionId   String?   @unique @map(name: "stripe_subscription_id")
+  stripePriceId          String?   @map(name: "stripe_price_id")
+  stripeCurrentPeriodEnd DateTime? @map(name: "stripe_current_period_end")
+
+  @@map(name: "users")
+}
+`,
+  });
+  const { database } = await detect(root);
+  assert.equal(database.entitlementTable, "users");
+  assert.equal(database.entitlementColumn, "stripe_price_id");
+});

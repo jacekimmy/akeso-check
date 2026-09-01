@@ -274,10 +274,10 @@ async function findSchemaDeclaredStorage(root, sourceFiles) {
          have, on every schema that maps camelCase fields to snake_case. */
       const fields = [...body.matchAll(/^\s*(\w+)\s+\w+[^\n]*$/gm)]
         .filter((m) => !/^\s*@@/.test(m[0]))
-        .map((m) => ({ name: m[1], column: m[0].match(/@map\(\s*"([^"]+)"\s*\)/)?.[1] || m[1] }));
+        .map((m) => ({ name: m[1], column: m[0].match(/@map\(\s*(?:name\s*:\s*)?"([^"]+)"\s*\)/)?.[1] || m[1] }));
       const stripey = fields.filter((f) => STRIPEY.test(f.name));
       if (!stripey.length && !STRIPEY.test(model)) continue;
-      const mapped = body.match(/@@map\(\s*"([^"]+)"\s*\)/)?.[1];
+      const mapped = body.match(/@@map\(\s*(?:name\s*:\s*)?"([^"]+)"\s*\)/)?.[1];
       candidates.push({ table: mapped || model, fields, hits: stripey.length + (STRIPEY.test(model) ? 2 : 0), source: "prisma" });
     }
   }
