@@ -182,3 +182,34 @@ test("schema changes are written for a human to run, never executed", () => {
   assert.match(migration.contents, /paste this into your database/i);
   assert.ok(!/drop |delete from/i.test(migration.contents), "the migration only ever adds");
 });
+
+test("an Edge Function app gets its endpoints as edge functions, not Next routes", () => {
+  const edge = detection({
+    framework: { framework: "node-other", typescript: false },
+    database: { kind: "supabase", entitlementTable: "profiles", entitlementColumn: "is_pro", tableConfirmed: true, columnConfirmed: true },
+    webhookHandlers: [{ file: "supabase/functions/stripe-webhook/index.ts", verifiesSignature: true, rawBodySeen: true, handledEvents: ["checkout.session.completed"], missingEvents: ["customer.subscription.deleted"] }],
+  });
+  const plan = buildFixPlan({ detection: edge, withEndpoints: true });
+  const paths = plan.files.map((file) => file.path);
+
+  assert.ok(paths.includes("supabase/functions/_shared/akeso-entitlement.ts"), "the one database file is shared between functions");
+  assert.ok(paths.includes("supabase/functions/akeso-restore/index.ts"));
+  assert.ok(paths.includes("supabase/functions/akeso-entitlements/index.ts"));
+  assert.ok(!paths.some((p) => p.startsWith("app/")), "nothing Next-shaped lands in a Vite app");
+
+  const handler = plan.files.find((file) => file.path === "supabase/functions/stripe-webhook/index.ts").contents;
+  assert.match(handler, /Deno\.serve/);
+  assert.match(handler, /constructEventAsync/, "Deno needs the async verifier");
+  assert.match(handler, /from "\.\.\/_shared\/akeso-entitlement\.ts"/, "Deno imports keep the .ts extension");
+
+  const verify = plan.files.find((file) => file.path.endsWith("akeso-verify.ts")).contents;
+  assert.match(verify, /crypto\.subtle/, "Web Crypto, not node:crypto");
+  assert.ok(!verify.includes("node:crypto"), "nothing Node-only in a Deno function");
+  const restore = plan.files.find((file) => file.path.includes("akeso-restore")).contents;
+  assert.match(restore, /status: 401/);
+  assert.match(restore, /result: "dry_run"/);
+  assert.match(restore, /from "\.\.\/_shared\/akeso-verify\.ts"/);
+
+  const migration = plan.files.find((file) => file.path.endsWith(".sql"));
+  assert.match(migration.path, /^supabase\/migrations\//, "the migration lands where the Supabase CLI applies it");
+});

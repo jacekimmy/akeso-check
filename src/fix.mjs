@@ -1117,6 +1117,119 @@ export async function POST(request${t(": Request")}) {
   return { verifier, restore, entitlements, nextish };
 }
 
+/* The two Akeso endpoints as Supabase Edge Functions, for Lovable and Bolt
+ * apps. Same contract as the Node ones: refuse anything not signed with the
+ * founder's shared secret (HMAC over "timestamp.body", timestamp inside the
+ * signed material so a captured request cannot be replayed), and the restore
+ * function only ever moves one boolean through the app's own guarded
+ * entitlement module. Web Crypto instead of node:crypto, because that is
+ * what Deno provides. */
+function denoEndpoints(detection, importFrom) {
+  const verifier = `// ${AKESO_MARKER}
+// Akeso: shared-secret verification for the two Akeso edge functions.
+const TOLERANCE_SECONDS = 300;
+
+async function hmacHex(secret: string, message: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function verifyAkesoRequest(rawBody: string, header: string | null) {
+  const secret = Deno.env.get("AKESO_SHARED_SECRET");
+  if (!secret) return { valid: false, reason: "AKESO_SHARED_SECRET is not set for this function" };
+  if (!header) return { valid: false, reason: "no signature" };
+  const parts = Object.fromEntries(header.split(",").map((part) => part.split("=")));
+  if (!parts.t || !parts.v1) return { valid: false, reason: "malformed signature" };
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(parts.t));
+  if (!Number.isFinite(age) || age > TOLERANCE_SECONDS) return { valid: false, reason: "signature too old" };
+  const expected = await hmacHex(secret, \`\${parts.t}.\${rawBody}\`);
+  // Constant-time compare over equal-length hex; a length mismatch is simply invalid.
+  if (expected.length !== String(parts.v1).length) return { valid: false, reason: "signature does not match" };
+  let diff = 0;
+  for (let i = 0; i < expected.length; i += 1) diff |= expected.charCodeAt(i) ^ String(parts.v1).charCodeAt(i);
+  if (diff !== 0) return { valid: false, reason: "signature does not match" };
+  return { valid: true };
+}
+`;
+
+  const restoreFrom = (name) => importFrom(path.join("supabase", "functions", name, "index.ts"), "entitlement");
+  const verifyFrom = (name) => importFrom(path.join("supabase", "functions", name, "index.ts"), "verify");
+
+  const restore = `// ${AKESO_MARKER}
+// Akeso: the ONLY way Akeso can change anything in this app.
+//
+// Read this file. It is the complete list of what Akeso is able to do:
+// set one boolean, on one account, through your own guarded function, and only
+// when the row still looks the way Akeso last read it.
+//
+// Delete this function and Akeso can no longer write to your app at all.
+import { applyBillingEntitlement, AKESO_RULE_VERSION } from "${restoreFrom("akeso-restore")}";
+import { verifyAkesoRequest } from "${verifyFrom("akeso-restore")}";
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+Deno.serve(async (request) => {
+  const rawBody = await request.text();
+  const check = await verifyAkesoRequest(rawBody, request.headers.get("akeso-signature"));
+  if (!check.valid) return new Response(check.reason, { status: 401 });
+
+  let body: Record<string, unknown>;
+  try { body = JSON.parse(rawBody); } catch { return new Response("bad json", { status: 400 }); }
+
+  const { account, target, expectedState, reasonCode, idempotencyKey, ruleVersion, dryRun } = body as {
+    account?: string; target?: boolean; expectedState?: boolean | null; reasonCode?: string; idempotencyKey?: string; ruleVersion?: string; dryRun?: boolean;
+  };
+  if (typeof account !== "string" || typeof target !== "boolean") return new Response("account and target are required", { status: 400 });
+
+  // The rule version is part of the contract: if your billing policy changed
+  // since Akeso prepared this restore, the restore is stale and must not run.
+  if (ruleVersion && ruleVersion !== AKESO_RULE_VERSION) return json({ result: "conflict", reason: "your billing rules changed since this was prepared" });
+
+  // A dry run reports what would happen and changes nothing.
+  if (dryRun) return json({ result: "dry_run", wouldTarget: target, account });
+
+  try {
+    const outcome = await applyBillingEntitlement(account, target, {
+      expected: typeof expectedState === "boolean" ? expectedState : null,
+      reasonCode: reasonCode || "akeso:restore",
+      idempotencyKey: idempotencyKey || \`akeso-\${account}-\${Date.now()}\`,
+    });
+    return json({
+      ...outcome,
+      verified: Boolean((outcome as { verified?: boolean }).verified),
+      after: (outcome as { after?: { billingEntitled: boolean } }).after ? { billingEntitled: (outcome as { after: { billingEntitled: boolean } }).after.billingEntitled } : null,
+      before: (outcome as { before?: { billingEntitled: boolean } }).before ? { billingEntitled: (outcome as { before: { billingEntitled: boolean } }).before.billingEntitled } : null,
+    });
+  } catch (error) {
+    return json({ result: "failed", reason: (error as Error).message }, 500);
+  }
+});
+`;
+
+  const entitlements = `// ${AKESO_MARKER}
+// Akeso: the read side. Returns this app's own answer to "who currently has
+// paid access", so it can be compared against Stripe. Signed like the restore
+// function, because an unauthenticated list of who is paying you is a leak.
+import { allAccountEntitlements } from "${restoreFrom("akeso-entitlements")}";
+import { verifyAkesoRequest } from "${verifyFrom("akeso-entitlements")}";
+
+Deno.serve(async (request) => {
+  const rawBody = await request.text();
+  const check = await verifyAkesoRequest(rawBody, request.headers.get("akeso-signature"));
+  if (!check.valid) return new Response(check.reason, { status: 401 });
+  try {
+    const accounts = await allAccountEntitlements();
+    return new Response(JSON.stringify({ accounts, readAt: new Date().toISOString() }), { headers: { "content-type": "application/json" } });
+  } catch (error) {
+    // A failed read is reported as a failure, never as an empty list.
+    return new Response(JSON.stringify({ error: (error as Error).message }), { status: 500, headers: { "content-type": "application/json" } });
+  }
+});
+`;
+  return { verifier, restore, entitlements };
+}
+
 function migrationSql(detection) {
   const column = detection.database?.entitlementColumn || "billing_entitled";
   const table = detection.database?.entitlementTable || "profiles";
@@ -1219,7 +1332,14 @@ export function buildFixPlan({ detection, lifecycle = null, sandbox = null, with
   /* The monitoring endpoints are opt-in, because they are the only way Akeso
      can ever read or write this app and a founder who only wanted the repair
      should not silently get a write path too. */
-  if (withEndpoints) {
+  if (withEndpoints && isDeno) {
+    const endpoints = denoEndpoints(detection, importFrom);
+    files.push(
+      { path: path.join("supabase", "functions", "_shared", "akeso-verify.ts"), contents: endpoints.verifier, why: "checks that a request really came from your own Akeso run" },
+      { path: path.join("supabase", "functions", "akeso-restore", "index.ts"), contents: endpoints.restore, why: "the ONLY way Akeso can change anything here (delete it and it cannot)" },
+      { path: path.join("supabase", "functions", "akeso-entitlements", "index.ts"), contents: endpoints.entitlements, why: "lets the monitor read your app's own answer for every account" },
+    );
+  } else if (withEndpoints) {
     const endpoints = akesoEndpoints(detection, importFrom);
     const routeDir = endpoints.nextish ? "app/api/akeso" : "akeso";
     const routeFile = (name) => (endpoints.nextish
