@@ -69,6 +69,31 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // The Akeso endpoints, served the same way: whatever is on disk right now.
+  // Present only after "fix --apply --with-endpoints", so a run before that
+  // correctly gets a 404 rather than a stub that pretends to work.
+  const akesoRoute = url.pathname.match(/^\/api\/akeso\/([a-z-]+)$/)?.[1];
+  if (req.method === "POST" && akesoRoute) {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    try {
+      const file = path.join(here, "app", "api", "akeso", akesoRoute, "route.mjs");
+      const module = await import(`${file}?v=${Date.now()}`);
+      const response = await module.POST(new Request(`http://localhost:${PORT}${req.url}`, {
+        method: "POST", headers: req.headers, body,
+      }));
+      const text = await response.text();
+      res.writeHead(response.status, { "content-type": response.headers.get("content-type") || "text/plain" });
+      res.end(text);
+    } catch (error) {
+      if (error.code === "ERR_MODULE_NOT_FOUND") { res.writeHead(404); res.end("no such route"); return; }
+      res.writeHead(500);
+      res.end(String(error?.message || error));
+    }
+    return;
+  }
+
   if (url.pathname === "/api/akeso-probe" || url.pathname === "/__akeso_probe") {
     try {
       const { isPro } = await import(`${path.join(here, "lib", "access.mjs")}?v=${Date.now()}`);

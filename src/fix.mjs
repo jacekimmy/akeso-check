@@ -635,6 +635,152 @@ export async function reconcile({ apply = false, removeToo = false } = {}) {
 `;
 }
 
+/* The two endpoints Akeso talks to, generated into the customer's own app.
+ *
+ * This is the whole surface of what Akeso can do to an app, which is why it is
+ * generated code the founder reads and commits rather than a database
+ * connection they hand over. Deleting these two files removes Akeso's access
+ * completely, and that has to stay true.
+ *
+ * Both refuse everything that is not signed with a shared secret the founder
+ * generates, and the restore endpoint additionally goes through the app's own
+ * guarded entitlement function, so blocks and human overrides still win.
+ */
+function akesoEndpoints(detection, importFrom) {
+  const typed = ts(detection);
+  const t = (annotation) => (typed ? annotation : "");
+  const framework = detection.framework?.framework || "node-other";
+  const nextish = framework.startsWith("next");
+  /* Each generated file computes its OWN specifier for the modules it imports.
+     Reusing the webhook handler's specifier worked only by accident when the
+     two files happened to sit at the same depth, and produced an import of a
+     name the target module does not export as soon as they did not. */
+  const routeDir = nextish ? "app/api/akeso" : "akeso";
+  const routePath = (name) => (nextish
+    ? path.join(routeDir, name, "route.x")
+    : path.join(routeDir, `${name}.x`));
+  const entitlementFrom = (name) => importFrom(routePath(name), "entitlement");
+  const verifyFrom = (name) => importFrom(routePath(name), "verify");
+
+  const verifier = `// ${AKESO_MARKER}
+// Akeso: shared-secret verification for the two Akeso endpoints.
+//
+// Same signing scheme Stripe uses, for the same reason: a timestamp inside the
+// signed material, so a captured request cannot be replayed later.
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+const SECRET = process.env.AKESO_SHARED_SECRET;
+const TOLERANCE_SECONDS = 300;
+
+export function verifyAkesoRequest(rawBody${t(": string")}, header${t(": string | null")}) {
+  if (!SECRET) return { valid: false, reason: "AKESO_SHARED_SECRET is not set in this app" };
+  if (!header) return { valid: false, reason: "no signature" };
+
+  const parts = Object.fromEntries(String(header).split(",").map((part) => part.split("=")));
+  if (!parts.t || !parts.v1) return { valid: false, reason: "malformed signature" };
+
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(parts.t));
+  if (!Number.isFinite(age) || age > TOLERANCE_SECONDS) return { valid: false, reason: "signature too old" };
+
+  const expected = createHmac("sha256", SECRET).update(\`\${parts.t}.\${rawBody}\`).digest("hex");
+  try {
+    if (!timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(parts.v1, "hex"))) {
+      return { valid: false, reason: "signature does not match" };
+    }
+  } catch { return { valid: false, reason: "signature does not match" }; }
+
+  return { valid: true };
+}
+`;
+
+  /* The write endpoint. Everything dangerous about Akeso passes through here,
+     so it is deliberately small enough to read in one sitting. */
+  const restore = `// ${AKESO_MARKER}
+// Akeso: the ONLY way Akeso can change anything in this app.
+//
+// Read this file. It is the complete list of what Akeso is able to do:
+// set one boolean, on one account, through your own guarded function, and only
+// when the row still looks the way Akeso last read it.
+//
+// Delete this file and Akeso can no longer write to your app at all.
+import { applyBillingEntitlement, AKESO_RULE_VERSION } from "${entitlementFrom("restore")}";
+import { verifyAkesoRequest } from "${verifyFrom("restore")}";
+
+export async function POST(request${t(": Request")}) {
+  const rawBody = await request.text();
+  const check = verifyAkesoRequest(rawBody, request.headers.get("akeso-signature"));
+  if (!check.valid) return new Response(check.reason, { status: 401 });
+
+  let body${t(": any")};
+  try { body = JSON.parse(rawBody); } catch { return new Response("bad json", { status: 400 }); }
+
+  const { account, target, expectedState, reasonCode, idempotencyKey, ruleVersion, dryRun } = body;
+  if (typeof account !== "string" || typeof target !== "boolean") {
+    return new Response("account and target are required", { status: 400 });
+  }
+
+  // The rule version is part of the contract: if your billing policy changed
+  // since Akeso prepared this restore, the restore is stale and must not run.
+  if (ruleVersion && ruleVersion !== AKESO_RULE_VERSION) {
+    return Response.json({ result: "conflict", reason: "your billing rules changed since this was prepared" });
+  }
+
+  // A dry run reports what would happen and changes nothing. Akeso treats an
+  // "applied" answer to a dry run as a protocol violation, so never do work here.
+  if (dryRun) {
+    return Response.json({ result: "dry_run", wouldTarget: target, account });
+  }
+
+  try {
+    const outcome = await applyBillingEntitlement(account, target, {
+      expected: typeof expectedState === "boolean" ? expectedState : null,
+      reasonCode: reasonCode || "akeso:restore",
+      idempotencyKey: idempotencyKey || \`akeso-\${account}-\${Date.now()}\`,
+    });
+    return Response.json({
+      ...outcome,
+      // Akeso does not take this endpoint's word for success either: it re-reads.
+      // Reporting verified truthfully is what makes that check meaningful.
+      verified: Boolean(outcome.verified),
+      after: outcome.after ? { billingEntitled: outcome.after.billingEntitled } : null,
+      before: outcome.before ? { billingEntitled: outcome.before.billingEntitled } : null,
+    });
+  } catch (error${t(": any")}) {
+    return Response.json({ result: "failed", reason: error.message }, { status: 500 });
+  }
+}
+`;
+
+  /* The read endpoint. Monitor needs the app's own answer for every account;
+     without it the comparison has only one side. */
+  const entitlements = `// ${AKESO_MARKER}
+// Akeso: the read side. Returns this app's own answer to "who currently has
+// paid access", so it can be compared against Stripe.
+//
+// Signed like the restore endpoint, because an unauthenticated list of who is
+// paying you is a data leak, not a convenience.
+import { allAccountEntitlements } from "${entitlementFrom("entitlements")}";
+import { verifyAkesoRequest } from "${verifyFrom("entitlements")}";
+
+export async function POST(request${t(": Request")}) {
+  const rawBody = await request.text();
+  const check = verifyAkesoRequest(rawBody, request.headers.get("akeso-signature"));
+  if (!check.valid) return new Response(check.reason, { status: 401 });
+
+  try {
+    const accounts = await allAccountEntitlements();
+    return Response.json({ accounts, readAt: new Date().toISOString() });
+  } catch (error${t(": any")}) {
+    // A failed read is reported as a failure, never as an empty list. An empty
+    // list would read as "nobody has access" and could trigger mass grants.
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}
+`;
+
+  return { verifier, restore, entitlements, nextish };
+}
+
 function migrationSql(detection) {
   const column = detection.database?.entitlementColumn || "billing_entitled";
   const table = detection.database?.entitlementTable || "profiles";
@@ -672,7 +818,7 @@ alter table ${table} add column if not exists ${column} boolean not null default
 
 /* Every file the repair would write, with its reason. Pure: builds the plan
    without touching the disk, so the dry run and the apply cannot disagree. */
-export function buildFixPlan({ detection, lifecycle = null, sandbox = null }) {
+export function buildFixPlan({ detection, lifecycle = null, sandbox = null, withEndpoints = false }) {
   const repairs = planRepairs({ detection, lifecycle, sandbox });
   const framework = detection.framework?.framework || "node-other";
   const dir = "akeso";
@@ -690,18 +836,22 @@ export function buildFixPlan({ detection, lifecycle = null, sandbox = null }) {
       : `akeso/webhook.${moduleExtension}`);
 
   const entitlementPath = path.join(dir, `entitlement.${moduleExtension}`);
-  /* "@/akeso/entitlement" only resolves in a project that configured that
-     alias. Everywhere else it must be a relative path, or the generated file
-     cannot load at all. */
+
+  /* How one generated file imports another.
+     "@/akeso/entitlement" only resolves in a project that configured that
+     alias; everywhere else it must be a relative path computed from the
+     IMPORTING file's own directory. Deriving one specifier and reusing it
+     everywhere worked only while two files happened to sit at the same depth. */
   const alias = detection.framework?.pathAlias;
-  const entitlementImport = alias
-    ? `${alias}akeso/entitlement`
-    : (() => {
-      const relative = path.relative(path.dirname(handlerTarget), entitlementPath).replace(/\\/g, "/");
-      const specifier = relative.startsWith(".") ? relative : `./${relative}`;
-      /* Node's ESM resolver needs the real extension; bundlers accept it too. */
-      return ts(detection) ? specifier.replace(/\.ts$/, "") : specifier;
-    })();
+  const importFrom = (fromFile, moduleName) => {
+    if (alias) return `${alias}akeso/${moduleName}`;
+    const target = path.join(dir, `${moduleName}.${moduleExtension}`);
+    const relative = path.relative(path.dirname(fromFile), target).replace(/\\/g, "/");
+    const specifier = relative.startsWith(".") ? relative : `./${relative}`;
+    /* Node's ESM resolver needs the real extension; TypeScript wants it gone. */
+    return ts(detection) ? specifier.replace(/\.ts$/, "") : specifier;
+  };
+  const entitlementImport = importFrom(handlerTarget, "entitlement");
 
   const files = [
     { path: entitlementPath, contents: entitlementModule(detection), why: "the one place that touches your database" },
@@ -710,7 +860,24 @@ export function buildFixPlan({ detection, lifecycle = null, sandbox = null }) {
     { path: path.join(dir, "migration.sql"), contents: migrationSql(detection), why: "the tables the repair needs (you paste this yourself)", manual: true },
   ];
 
-  return { repairs, files, framework, entitlementImport };
+  /* The monitoring endpoints are opt-in, because they are the only way Akeso
+     can ever read or write this app and a founder who only wanted the repair
+     should not silently get a write path too. */
+  if (withEndpoints) {
+    const endpoints = akesoEndpoints(detection, importFrom);
+    const routeDir = endpoints.nextish ? "app/api/akeso" : "akeso";
+    const routeFile = (name) => (endpoints.nextish
+      ? path.join(routeDir, name, `route.${handlerExtension}`)
+      : path.join(routeDir, `${name}.${moduleExtension}`));
+
+    files.push(
+      { path: path.join(dir, `verify.${moduleExtension}`), contents: endpoints.verifier, why: "checks that a request really came from your own Akeso run" },
+      { path: routeFile("restore"), contents: endpoints.restore, why: "the ONLY way Akeso can change anything here (delete it and it cannot)" },
+      { path: routeFile("entitlements"), contents: endpoints.entitlements, why: "lets the monitor read your app's own answer for every account" },
+    );
+  }
+
+  return { repairs, files, framework, entitlementImport, withEndpoints };
 }
 
 /* -------------------------------------------------------------- applying */

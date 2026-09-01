@@ -1,5 +1,6 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { flagValue as flagValueOf, positionalPath } from "../args.mjs";
 import { detect } from "../detect.mjs";
 import { runLifecycle } from "../lifecycle.mjs";
@@ -41,7 +42,10 @@ export async function runFix(args) {
   const lifecycle = lastCheck.scenarioResults?.length
     ? { results: rehydrate(lastCheck.scenarioResults) }
     : null;
-  const plan = buildFixPlan({ detection, lifecycle });
+  /* The monitoring endpoints are opt-in. A founder who wanted their webhook
+     repaired should not silently also get a write path into their own app. */
+  const withEndpoints = args.includes("--with-endpoints");
+  const plan = buildFixPlan({ detection, lifecycle, withEndpoints });
 
   if (!plan.repairs.length) {
     console.log("\nNothing to repair. The Check did not find anything wrong with your billing code.");
@@ -119,6 +123,19 @@ export async function runFix(args) {
   if (manual.length) {
     console.log(`\nOne thing Akeso will not do for you: run database schema changes.`);
     for (const file of manual) console.log(`  Open ${file.path} and paste it into your database's SQL editor.`);
+  }
+
+  if (withEndpoints) {
+    /* The secret is generated locally and printed once, here, because it is
+       the founder's to hold. Akeso stores it in their own env file and nowhere
+       else, and the two endpoints refuse every request not signed with it. */
+    const secret = `akeso_${randomBytes(24).toString("hex")}`;
+    console.log(`\nTwo endpoints were added so the monitor can read and repair this app.`);
+    console.log(`They refuse every request that is not signed with a secret only you hold.`);
+    console.log(`\nAdd this to your env file (.env.local), and to your host's environment:`);
+    console.log(`\n  AKESO_SHARED_SECRET=${secret}`);
+    console.log(`\nThat value is generated on your machine and was not sent anywhere. Deleting`);
+    console.log(`app/api/akeso/restore removes Akeso's ability to change this app at all.`);
   }
 
   /* Prove it, and undo it if the proof fails. A repair that its own test
