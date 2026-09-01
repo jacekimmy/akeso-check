@@ -17,6 +17,7 @@ import { runSandboxLifecycle } from "../sandbox.mjs";
  *                                        test-clock trial + renewal, Stripe's
  *                                        own events delivered to the app
  * Options: --account <id> (map scenarios onto one real account, reset between),
+ * --probe-url <url> (a deployed app's own guarded probe, token included),
  * --webhook-secret <whsec_…>, --html <path>, --no-open, --json.
  * Every default favours the founder who read nothing: something visible always
  * comes out, and the terminal always says what to do next. */
@@ -65,7 +66,8 @@ async function projectStripeKey() {
 
 async function probeAnswers(url) {
   try {
-    const response = await fetch(`${url}?account=akeso-warmup`, { signal: AbortSignal.timeout(4000) });
+    const joiner = url.includes("?") ? "&" : "?";
+    const response = await fetch(`${url}${joiner}account=akeso-warmup`, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) return false;
     const body = await response.json();
     return typeof body.billingEntitled === "boolean";
@@ -110,7 +112,19 @@ if (base) {
      up. Removal happens no matter how the run ends. */
   let probeUrl = null;
   let installed = null;
-  for (const candidate of [`${base}/api/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`, `${base}/__akeso_probe`]) {
+  /* A deployed app keeps its probe behind a token in the URL, so it cannot be
+     discovered by guessing paths. The founder names it, and the Check refuses
+     to install a temporary one over the top of it. */
+  const named = flagValue("--probe-url");
+  if (named) {
+    if (!(await probeAnswers(named))) {
+      console.error(`\nThe probe at ${named.replace(/token=[^&]+/, "token=...")} did not answer with billingEntitled.`);
+      console.error(`Check the address and the token, then run this again.\n`);
+      process.exit(1);
+    }
+    probeUrl = named;
+  }
+  for (const candidate of probeUrl ? [] : [`${base}/api/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`, `${base}/__akeso_probe`]) {
     if (await probeAnswers(candidate)) { probeUrl = candidate; break; }
   }
   if (!probeUrl) {
