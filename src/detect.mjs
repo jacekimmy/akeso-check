@@ -223,10 +223,79 @@ const TABLE_READ = /\.from\(\s*["'`]([a-z_][a-z0-9_]*)["'`]\s*\)/gi;
 const ENTITLEMENT_COLUMN = /\b(is_pro|is_premium|is_paid|is_plus|has_access|is_subscribed|billing_entitled|subscription_status|plan|tier)\b/gi;
 const BILLING_TABLES = new Set(["profiles", "users", "accounts", "subscriptions", "subscribers", "customers", "entitlements", "billing"]);
 
+/* Prisma and Drizzle apps declare their tables in a schema file, not in
+   query strings, so the query-string scan above finds nothing and falls back
+   to "profiles". Five of eight real starter kits did exactly that. The model
+   or table that carries Stripe-ish fields is the one billing lives in, and
+   its most entitlement-like field is the column. */
+const STRIPEY = /stripe|subscription|plan|is_?pro|is_?paid|premium|entitle/i;
+const ENTITLEMENT_FIELD_RANK = [
+  /^(is_?pro|is_?paid|is_?premium|has_?access|is_?subscribed|billing_?entitled|active|is_?active)$/i,
+  /^(subscription_?status|status)$/i,
+  /^(plan|plan_?name|tier|stripe_?price_?id)$/i,
+  /^stripe_?current_?period_?end$/i,
+];
+const snake = (name) => name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+
+async function findSchemaDeclaredStorage(root, sourceFiles) {
+  const candidates = [];
+
+  /* Prisma: model Name { field Type ... } blocks, table renamed by @@map. */
+  const prismaRaw = await readIfThere(path.join(root, "prisma", "schema.prisma"))
+    || await readIfThere(path.join(root, "schema.prisma"));
+  if (prismaRaw) {
+    for (const match of prismaRaw.matchAll(/model\s+(\w+)\s*\{([\s\S]*?)\n\}/g)) {
+      const [, model, body] = match;
+      const fields = [...body.matchAll(/^\s*(\w+)\s+\w+/gm)].map((m) => m[1]).filter((f) => !/^@@/.test(f));
+      const stripey = fields.filter((f) => STRIPEY.test(f));
+      if (!stripey.length && !STRIPEY.test(model)) continue;
+      const mapped = body.match(/@@map\(\s*"([^"]+)"\s*\)/)?.[1];
+      candidates.push({ table: mapped || model, fields, hits: stripey.length + (STRIPEY.test(model) ? 2 : 0), source: "prisma" });
+    }
+  }
+
+  /* Drizzle: pgTable("name", { field: ... }) or mysqlTable/sqliteTable. */
+  for (const file of sourceFiles) {
+    if (!/schema|db|drizzle/i.test(file)) continue;
+    const content = await readIfThere(file);
+    if (!content || !/(pg|mysql|sqlite)Table\(/.test(content)) continue;
+    for (const match of content.matchAll(/(?:pg|mysql|sqlite)Table\(\s*["'\`]([\w-]+)["'\`]\s*,\s*\{([\s\S]*?)\n\s*\}/g)) {
+      const [, table, body] = match;
+      const fields = [...body.matchAll(/^\s*(\w+)\s*:/gm)].map((m) => m[1]);
+      const stripey = fields.filter((f) => STRIPEY.test(f));
+      if (!stripey.length && !STRIPEY.test(table)) continue;
+      candidates.push({ table, fields, hits: stripey.length + (STRIPEY.test(table) ? 2 : 0), source: "drizzle" });
+    }
+  }
+
+  if (!candidates.length) return null;
+  const best = candidates.sort((a, b) => b.hits - a.hits)[0];
+  let column = null;
+  for (const pattern of ENTITLEMENT_FIELD_RANK) {
+    column = best.fields.find((f) => pattern.test(f) || pattern.test(snake(f)));
+    if (column) break;
+  }
+  return { table: best.table, column, source: best.source, fields: best.fields.filter((f) => STRIPEY.test(f)) };
+}
+
 async function findEntitlementStorage(root, sourceFiles, accessDecisionSites) {
   const tally = (map, key) => map.set(key, (map.get(key) || 0) + 1);
   const tables = new Map();
   const columns = new Map();
+
+  /* A declared schema outranks a guess from query strings: it is the
+     database's own statement of what exists. */
+  const declared = await findSchemaDeclaredStorage(root, sourceFiles);
+  if (declared) {
+    return {
+      entitlementTable: declared.table,
+      entitlementColumn: declared.column || "billing_entitled",
+      tableConfirmed: true,
+      columnConfirmed: Boolean(declared.column),
+      schemaSource: declared.source,
+      evidence: { tables: [{ name: declared.table, hits: 1, source: declared.source }], columns: declared.fields.map((name) => ({ name, hits: 1 })) },
+    };
+  }
   /* Files the ranking already believes decide access are worth more than a
      random file that happens to mention a table. */
   const weighted = new Set(accessDecisionSites.slice(0, 5).map((site) => site.file));
