@@ -162,6 +162,9 @@ ${provenance}
 //   finalAccessDecision       what your gates actually do. Read, never written.
 `;
 
+  const orm = detection.database?.ormInstalled || detection.database?.schemaSource || null;
+  if (!supabase && (orm === "prisma" || orm === "drizzle")) return ormNativeModule(detection, { header, table, column, orm, typed, t });
+
   if (supabase) {
     return `${header}
 import { createClient } from "@supabase/supabase-js";
@@ -345,6 +348,189 @@ export async function setLastEventCreated(accountId${t(": string")}, created${t(
 export async function allAccountEntitlements() {
   const rows${t(": any[]")} = await yourDatabase.allAccounts(); // TODO(7), used by reconcile
   return rows.map((row) => ({ account: row.id, billingEntitled: Boolean(row.${column}) }));
+}
+`;
+}
+
+/* Prisma and Drizzle apps: finished code, through the app's own client.
+ *
+ * Akeso owns exactly one column, billing_entitled, and reaches it with
+ * parameterised raw SQL through the ORM the app already has. Raw SQL rather
+ * than model calls, because a Prisma model only knows the fields its schema
+ * declares and the akeso columns are added by migration.sql, not by editing
+ * the founder's schema. Identifiers are fixed at generation time from what
+ * the Check found in the schema file; values are always bound parameters.
+ *
+ * The one thing Akeso cannot know for a Drizzle app is where its db instance
+ * is exported from, so that single import line is marked and left to the
+ * founder. Everything else is complete.
+ */
+function ormNativeModule(detection, { header, table, column, orm, typed, t }) {
+  const q = (name) => `"${String(name).replace(/"/g, "")}"`;
+  const T = q(table);
+  const prisma = orm === "prisma";
+
+  const client = prisma
+    ? `import { PrismaClient } from "@prisma/client";
+
+const db = new PrismaClient();
+
+/* Parameterised raw SQL through Prisma. The table and column names below were
+   read from your schema file; the values are always bound parameters. */
+const query = (sql${t(": string")}, ...params${t(": unknown[]")}) => db.$queryRawUnsafe${typed ? "<any[]>" : ""}(sql, ...params);
+const execute = (sql${t(": string")}, ...params${t(": unknown[]")}) => db.$executeRawUnsafe(sql, ...params);`
+    : `import { sql } from "drizzle-orm";
+// HEADS UP: the one line Akeso cannot write for you. Import your app's
+// Drizzle database instance here (the thing you call db.select() on).
+import { db } from "./db"; // TODO: point this at your real db export
+
+/* Parameterised raw SQL through Drizzle. The table and column names below were
+   read from your schema file; the values are always bound parameters. */
+const query = async (text${t(": string")}, ...params${t(": unknown[]")}) => {
+  const result${t(": any")} = await db.execute(sql.raw(bind(text, params)));
+  return Array.isArray(result) ? result : result.rows || [];
+};
+const execute = async (text${t(": string")}, ...params${t(": unknown[]")}) => {
+  const result${t(": any")} = await db.execute(sql.raw(bind(text, params)));
+  return typeof result?.rowCount === "number" ? result.rowCount : Array.isArray(result) ? result.length : 0;
+};
+/* Drizzle's raw() takes a finished string, so values are escaped here the
+   way Postgres does it (single quotes doubled, booleans and numbers literal).
+   Only ever called with account ids, event ids, booleans and integers. */
+function bind(text${t(": string")}, params${t(": unknown[]")}) {
+  return text.replace(/\\$(\\d+)/g, (_, n) => {
+    const value = params[Number(n) - 1];
+    if (value === null || value === undefined) return "NULL";
+    if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+    if (typeof value === "number") return String(value);
+    return "'" + String(value).replace(/'/g, "''") + "'";
+  });
+}`;
+
+  const provenanceNote = detection.database?.columnConfirmed
+    ? `// Your app's own paid marker is ${T}.${q(column)}. Akeso does not write to it.
+// It reads it once, to seed billing_entitled the first time an account is seen.`
+    : `// The Check could not tell which column marks a paying account, so
+// billing_entitled starts false for every account until Stripe says otherwise
+// (the monitor's first sweep, or the first webhook, sets it).`;
+
+  const seed = detection.database?.columnConfirmed
+    ? (/status/i.test(column)
+      ? `entitledByStatus(String(row.${column} ?? ""))`
+      : /price|period|plan|tier/i.test(column)
+        ? `Boolean(row.${column})`
+        : `Boolean(row.${column})`)
+    : "false";
+
+  return `${header}
+${client}
+
+export const AKESO_RULE_VERSION = "1";
+
+// Which Stripe subscription statuses mean "entitled" under your policy.
+// past_due is the grace period: still entitled. Change this line to change
+// the policy, and bump AKESO_RULE_VERSION when you do.
+const ENTITLED_STATUSES = new Set(["active", "trialing", "past_due"]);
+export const entitledByStatus = (status${t(": string")}) => ENTITLED_STATUSES.has(status);
+
+${provenanceNote}
+const SELECT = \`SELECT "id", "billing_entitled", "complimentary_access", "billing_override", "admin_block", "abuse_block"${detection.database?.columnConfirmed ? `, ${q(column)}` : ""} FROM ${T} WHERE "id" = $1 LIMIT 1\`;
+
+export async function getBillingEntitlement(accountId${t(": string")}) {
+  // A read error is never reported as "not entitled": returning false here
+  // locks out paying customers. The error is thrown and the caller decides.
+  const rows = await query(SELECT, accountId);
+  const row${t(": any")} = rows[0] || null;
+  if (!row) {
+    return { accountId, billingEntitled: false, manualComplimentaryAccess: false, manualBillingOverride: false,
+      administrativeBlock: false, securityOrAbuseBlock: false, finalAccessDecision: false,
+      ruleVersion: AKESO_RULE_VERSION, decisionSource: "${table}.billing_entitled", readAt: new Date().toISOString(), exists: false };
+  }
+  // billing_entitled is Akeso's column. Until it has been written once, the
+  // app's own marker seeds it, so the first sweep does not read every paying
+  // customer as locked out.
+  const entitled = row.billing_entitled === null || row.billing_entitled === undefined
+    ? ${seed}
+    : Boolean(row.billing_entitled);
+  return {
+    accountId,
+    billingEntitled: entitled,
+    manualComplimentaryAccess: Boolean(row.complimentary_access),
+    manualBillingOverride: Boolean(row.billing_override),
+    administrativeBlock: Boolean(row.admin_block),
+    securityOrAbuseBlock: Boolean(row.abuse_block),
+    finalAccessDecision: entitled,
+    ruleVersion: AKESO_RULE_VERSION,
+    decisionSource: "${table}.billing_entitled",
+    readAt: new Date().toISOString(),
+    exists: true,
+  };
+}
+
+// The one write. Changes billing_entitled and nothing else, and only if the row
+// still looks the way we last read it (compare-and-set): a restore racing a
+// newer change loses loudly instead of winning silently.
+export async function applyBillingEntitlement(
+  accountId${t(": string")},
+  target${t(": boolean")},
+  { expected, reasonCode, idempotencyKey }${t(": { expected: boolean | null; reasonCode: string; idempotencyKey: string }")},
+) {
+  const before = await getBillingEntitlement(accountId);
+  if (!before.exists) return { result: "unsupported"${typed ? " as const" : ""}, reason: "no such account", before };
+  if (before.administrativeBlock || before.securityOrAbuseBlock) {
+    return { result: "unsupported"${typed ? " as const" : ""}, reason: "account carries an administrative or security block", before };
+  }
+  if (before.manualComplimentaryAccess || before.manualBillingOverride) {
+    return { result: "unsupported"${typed ? " as const" : ""}, reason: "a human set this account's access on purpose", before };
+  }
+  if (before.billingEntitled === target) return { result: "no_op"${typed ? " as const" : ""}, before };
+  if (expected !== null && before.billingEntitled !== expected) {
+    return { result: "conflict"${typed ? " as const" : ""}, reason: "state changed since it was read", before };
+  }
+
+  // The WHERE clause carries the value we read, so a concurrent change makes
+  // this update match zero rows instead of racing. A never-written column is
+  // NULL, which is why the seeded value is matched with IS NOT DISTINCT FROM.
+  const changed = await execute(
+    \`UPDATE ${T} SET "billing_entitled" = $1 WHERE "id" = $2 AND ("billing_entitled" IS NOT DISTINCT FROM $3 OR "billing_entitled" IS NULL)\`,
+    target, accountId, before.billingEntitled,
+  );
+  if (!changed) return { result: "conflict"${typed ? " as const" : ""}, reason: "the row changed before the write landed", before };
+
+  const after = await getBillingEntitlement(accountId);
+  return {
+    result: after.billingEntitled === target ? ${typed ? '"applied" as const' : '"applied"'} : ${typed ? '"failed" as const' : '"failed"'},
+    idempotencyKey, reasonCode, before, after,
+    verified: after.billingEntitled === target, // success is claimed only after the re-read agrees
+  };
+}
+
+// Idempotency and ordering, both keyed per account. Requires the tables in
+// akeso/migration.sql.
+export async function alreadyProcessed(eventId${t(": string")}) {
+  const rows = await query(\`SELECT "event_id" FROM "akeso_processed_events" WHERE "event_id" = $1 LIMIT 1\`, eventId);
+  return rows.length > 0;
+}
+
+export async function markProcessed(eventId${t(": string")}, eventType${t(": string")}) {
+  await execute(\`INSERT INTO "akeso_processed_events" ("event_id", "event_type") VALUES ($1, $2) ON CONFLICT ("event_id") DO NOTHING\`, eventId, eventType);
+}
+
+export async function lastEventCreated(accountId${t(": string")}) {
+  const rows = await query(\`SELECT "last_event_created" FROM "akeso_event_watermarks" WHERE "account_id" = $1 LIMIT 1\`, accountId);
+  return Number(rows[0]?.last_event_created ?? 0);
+}
+
+export async function setLastEventCreated(accountId${t(": string")}, created${t(": number")}) {
+  await execute(\`INSERT INTO "akeso_event_watermarks" ("account_id", "last_event_created") VALUES ($1, $2) ON CONFLICT ("account_id") DO UPDATE SET "last_event_created" = EXCLUDED."last_event_created", "updated_at" = now()\`, accountId, created);
+}
+
+export async function allAccountEntitlements() {
+  const rows = await query(\`SELECT "id", "billing_entitled"${detection.database?.columnConfirmed ? `, ${q(column)}` : ""} FROM ${T}\`);
+  return rows.map((row${t(": any")}) => ({
+    account: String(row.id),
+    billingEntitled: row.billing_entitled === null || row.billing_entitled === undefined ? ${seed} : Boolean(row.billing_entitled),
+  }));
 }
 `;
 }
@@ -810,6 +996,11 @@ alter table ${table} add column if not exists complimentary_access boolean not n
 alter table ${table} add column if not exists billing_override     boolean not null default false;
 alter table ${table} add column if not exists admin_block          boolean not null default false;
 alter table ${table} add column if not exists abuse_block          boolean not null default false;
+
+-- Akeso's own column. It is the ONLY column Akeso ever writes. It starts NULL
+-- so your existing paid marker can seed it the first time each account is
+-- read, instead of every paying customer reading as locked out on day one.
+alter table ${table} add column if not exists billing_entitled boolean;
 
 -- The entitlement column itself, if the Check did not find one.
 alter table ${table} add column if not exists ${column} boolean not null default false;

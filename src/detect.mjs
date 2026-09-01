@@ -269,8 +269,13 @@ async function findSchemaDeclaredStorage(root, sourceFiles) {
   if (prismaRaw) {
     for (const match of prismaRaw.matchAll(/model\s+(\w+)\s*\{([\s\S]*?)\n\}/g)) {
       const [, model, body] = match;
-      const fields = [...body.matchAll(/^\s*(\w+)\s+\w+/gm)].map((m) => m[1]).filter((f) => !/^@@/.test(f));
-      const stripey = fields.filter((f) => STRIPEY.test(f));
+      /* A field's SQL column is its @map name when it has one. Generated SQL
+         that quoted the Prisma field name selected a column Postgres does not
+         have, on every schema that maps camelCase fields to snake_case. */
+      const fields = [...body.matchAll(/^\s*(\w+)\s+\w+[^\n]*$/gm)]
+        .filter((m) => !/^\s*@@/.test(m[0]))
+        .map((m) => ({ name: m[1], column: m[0].match(/@map\(\s*"([^"]+)"\s*\)/)?.[1] || m[1] }));
+      const stripey = fields.filter((f) => STRIPEY.test(f.name));
       if (!stripey.length && !STRIPEY.test(model)) continue;
       const mapped = body.match(/@@map\(\s*"([^"]+)"\s*\)/)?.[1];
       candidates.push({ table: mapped || model, fields, hits: stripey.length + (STRIPEY.test(model) ? 2 : 0), source: "prisma" });
@@ -289,8 +294,10 @@ async function findSchemaDeclaredStorage(root, sourceFiles) {
       const table = match[1];
       const body = balancedBody(content, match.index + match[0].length - 1);
       if (body === null) continue;
-      const fields = [...body.matchAll(/^\s*(\w+)\s*:/gm)].map((m) => m[1]);
-      const stripey = fields.filter((f) => STRIPEY.test(f));
+      /* Drizzle's column name is the first string argument: userId: text("user_id"). */
+      const fields = [...body.matchAll(/^\s*(\w+)\s*:\s*\w+\(\s*(?:["'\`]([\w-]+)["'\`])?/gm)]
+        .map((m) => ({ name: m[1], column: m[2] || m[1] }));
+      const stripey = fields.filter((f) => STRIPEY.test(f.name));
       if (!stripey.length && !STRIPEY.test(table)) continue;
       candidates.push({ table, fields, hits: stripey.length + (STRIPEY.test(table) ? 2 : 0), source: "drizzle" });
     }
@@ -300,10 +307,10 @@ async function findSchemaDeclaredStorage(root, sourceFiles) {
   const best = candidates.sort((a, b) => b.hits - a.hits)[0];
   let column = null;
   for (const pattern of ENTITLEMENT_FIELD_RANK) {
-    column = best.fields.find((f) => pattern.test(f) || pattern.test(snake(f)));
-    if (column) break;
+    const field = best.fields.find((f) => pattern.test(f.name) || pattern.test(snake(f.name)));
+    if (field) { column = field.column; break; }
   }
-  return { table: best.table, column, source: best.source, fields: best.fields.filter((f) => STRIPEY.test(f)) };
+  return { table: best.table, column, source: best.source, fields: best.fields.filter((f) => STRIPEY.test(f.name)).map((f) => f.column) };
 }
 
 async function findEntitlementStorage(root, sourceFiles, accessDecisionSites) {

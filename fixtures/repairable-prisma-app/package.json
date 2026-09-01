@@ -1,0 +1,8 @@
+{
+  "name": "repairable-prisma-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A tutorial-shaped Next app on Prisma, the shape five of eight real starter kits take. The Fix must land finished code here.",
+  "dependencies": { "next": "15.0.0", "stripe": "0.0.0-akeso-fixture", "@prisma/client": "0.0.0-akeso-fixture", "prisma": "0.0.0-akeso-fixture" }
+}

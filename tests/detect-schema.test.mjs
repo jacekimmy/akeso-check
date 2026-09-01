@@ -38,7 +38,7 @@ model User {
   });
   const { database } = await detect(root);
   assert.equal(database.entitlementTable, "users", "the @@map name is the real table");
-  assert.equal(database.entitlementColumn, "stripePriceId");
+  assert.equal(database.entitlementColumn, "stripe_price_id", "the @map name is the real column");
   assert.equal(database.tableConfirmed, true);
   assert.equal(database.schemaSource, "prisma");
 });
@@ -60,7 +60,7 @@ export const subscriptions = pgTable("gf_subscriptions", {
   });
   const { database } = await detect(root);
   assert.equal(database.entitlementTable, "gf_subscriptions");
-  assert.equal(database.entitlementColumn, "stripePriceId");
+  assert.equal(database.entitlementColumn, "stripePriceId", "Drizzle: text(\"stripePriceId\") names the column");
   assert.equal(database.schemaSource, "drizzle");
 });
 
@@ -78,7 +78,7 @@ export const teams = pgTable("teams", {
   });
   const { database } = await detect(root);
   assert.equal(database.entitlementTable, "teams");
-  assert.equal(database.entitlementColumn, "subscriptionStatus");
+  assert.equal(database.entitlementColumn, "subscription_status", "the Drizzle column name, not the field name");
 });
 
 test("a boolean active flag is recognised as the entitlement column", async () => {
