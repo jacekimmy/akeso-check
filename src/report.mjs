@@ -8,8 +8,12 @@
  * measured, and the limits of the run stated as prominently as the findings.
  */
 
+import { JOURNEY_CSS, buildJourney, renderJourney } from "./journey.mjs";
+import { nextStep } from "./next-step.mjs";
+
 const escapeHtml = (value) => String(value ?? "")
-  .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;");
 
 const GRADE_COPY = {
   A: "Your billing lifecycle holds up.",
@@ -20,7 +24,12 @@ const GRADE_COPY = {
   "?": "The run itself had problems. This is not a verdict on your app.",
 };
 
-export function renderReport({ detection, lifecycle, sandbox, generatedAt = new Date() }) {
+export function renderReport({ detection, lifecycle, sandbox, ledger = [], step = null, generatedAt = new Date() }) {
+  /* The loop, drawn from what actually executed. A founder reading this page
+     should be able to answer "where am I and what happens next" before reading
+     a single finding. */
+  const journey = buildJourney({ detection, lifecycle, sandbox, ledger });
+  const journeyHtml = renderJourney(journey, { escape: escapeHtml });
   /* Static-only is a normal, successful outcome, not a broken run. Saying "the
      run had problems" over a clean code read was the first thing a real user
      hit, and it also let the page claim scenarios were acted out when nothing
@@ -81,6 +90,17 @@ export function renderReport({ detection, lifecycle, sandbox, generatedAt = new 
   const findingRows = staticFindings.map((finding) =>
     `<div class="row ${finding.tone}"><span class="mark">${finding.tone === "ok" ? "✓" : finding.tone === "bad" ? "✗" : "!"}</span><span class="name wide">${escapeHtml(finding.text)}</span></div>`,
   ).join("\n");
+
+  /* One next action, from the same ladder the terminal uses, so the page and
+     the command line can never tell a founder two different things. */
+  const chosenStep = step || nextStep({ ledger, detection, lifecycle, sandbox });
+  const nextBox = chosenStep ? `<div class="nextBox">
+    <div class="nextLabel">Do this next</div>
+    <h3>${escapeHtml(chosenStep.headline)}</h3>
+    ${chosenStep.why ? `<p>${escapeHtml(chosenStep.why)}</p>` : ""}
+    ${chosenStep.firstDoThis ? `<ol><li>${escapeHtml(chosenStep.firstDoThis)}</li><li>run the command below</li></ol>` : ""}
+    ${chosenStep.command ? `<pre class="cmd">${escapeHtml(chosenStep.command)}</pre>` : ""}
+  </div>` : "";
 
   const limits = [
     staticOnly
@@ -143,6 +163,16 @@ export function renderReport({ detection, lifecycle, sandbox, generatedAt = new 
   pre.cmd { background:color-mix(in srgb, var(--ink) 5%, transparent); border-radius:8px; padding:13px 15px; overflow-x:auto;
     font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
   code.inline { font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .loopHead { margin:40px 0 18px; }
+  .loopHead h2 { margin:0 0 3px; }
+  .loopHead p { margin:0; font-size:13.5px; color:var(--ink2); max-width:56ch; }
+  .nextBox { margin-top:34px; border:1px solid var(--line); border-radius:12px; padding:22px 24px;
+    background:color-mix(in srgb, var(--ink) 2.5%, transparent); }
+  .nextBox .nextLabel { font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); }
+  .nextBox h3 { margin:6px 0 5px; font-size:16.5px; font-weight:600; letter-spacing:-.01em; }
+  .nextBox p { margin:0 0 14px; color:var(--ink2); font-size:13.5px; max-width:58ch; }
+  .nextBox ol { margin:0 0 12px; padding-left:19px; color:var(--ink2); font-size:13.5px; }
+${JOURNEY_CSS}
 </style></head><body><div class="wrap">
   <div class="local">This report is a file on your computer. Nothing was sent anywhere.</div>
   <div class="shell">
@@ -163,12 +193,14 @@ export function renderReport({ detection, lifecycle, sandbox, generatedAt = new 
     </div>
   </div>
 
-  ${staticOnly ? `<h2>The live test has not run yet</h2>
-  <p class="intro">Reading code can only tell you what your app is supposed to do. To see what it actually does when a customer cancels, Akeso needs to run against your app while it is running.</p>
-  ${edgeFunction
-    ? `<p class="intro">Your webhook is a Supabase Edge Function. The live test does not support that shape yet, so this code read is everything Akeso can prove about this project today.</p>`
-    : `<p class="intro">Start your app the way you normally do (often <code class="inline">npm run dev</code>), then run this in the same folder:</p>
-  <pre class="cmd">npx akeso-check --lifecycle-url http://localhost:3000</pre>`}` : ""}
+  <div class="loopHead">
+    <h2>Where this app is</h2>
+    <p>Akeso works in three steps, and each one hands something to the next. A step is only marked done when it actually ran.</p>
+  </div>
+  ${journeyHtml.strip}
+  ${journeyHtml.detail}
+
+  ${nextBox}
   ${lifecycle ? `<h2>What we tested</h2>
   <p class="intro">Akeso acted out ten billing situations against your app: paying, canceling, a failing card, a refund. After each one it asked your app the same question: does this customer still have paid access?</p>
   <div class="rows">${scenarioRows}</div>` : ""}

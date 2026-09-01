@@ -245,7 +245,7 @@ for (const blocker of capabilities.blockers) console.log(`⚠ ${blocker}`);
 
 /* Something visible always comes out: the report, and the next step. */
 const out = flagValue("--html") || path.join(root, "akeso-report.html");
-await writeFile(out, renderReport({ detection, lifecycle, sandbox }));
+await writeFile(out, renderReport({ detection, lifecycle, sandbox, ledger: await readLedger(root) }));
 console.log(`\nReport: ${out}`);
 if (process.env.CODESPACES) {
   console.log(`To view it: right-click ${path.basename(out)} in the file list on the left and choose Download, then open the downloaded file.`);
