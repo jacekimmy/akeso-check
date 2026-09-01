@@ -87,8 +87,12 @@ and backs up every file it replaces. Generated files are marked
 `DO NOT EDIT`, and `--revert` refuses to touch any file you edited afterwards.
 
 Add `--verify-url http://localhost:3000` and Akeso proves the repair by
-re-running the full lifecycle test against your running app — and reverts the
+re-running the full lifecycle test against your running app, and reverts the
 whole thing automatically if its own test disagrees.
+
+Add `--with-endpoints` to also generate the two endpoints the monitor needs.
+They are opt-in, because a founder who only wanted their webhook repaired
+should not silently get a write path into their own app.
 
 ## Monitor
 
