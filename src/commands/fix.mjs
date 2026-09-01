@@ -206,7 +206,7 @@ async function verifyRepair(root, baseUrl, account) {
 
   let probeUrl = null;
   for (const candidate of [`${base}/api/akeso-probe`, `${base}/akeso-probe`, `${base}/api/__akeso_probe`]) {
-    const answers = await fetch(`${candidate}?account=akeso-warmup`, { signal: AbortSignal.timeout(4000) })
+    const answers = await fetch(`${candidate}?account=${encodeURIComponent(account || "00000000-0000-0000-0000-000000000000")}`, { signal: AbortSignal.timeout(4000) })
       .then((response) => response.ok).catch(() => false);
     if (answers) { probeUrl = candidate; break; }
   }
@@ -217,7 +217,7 @@ async function verifyRepair(root, baseUrl, account) {
       return { couldNotTest: `could not install a temporary probe (${installed.reason})` };
     }
     for (let i = 0; i < 30 && !probeUrl; i += 1) {
-      const answers = await fetch(`${base}${installed.urlPath}?account=akeso-warmup`, { signal: AbortSignal.timeout(4000) })
+      const answers = await fetch(`${base}${installed.urlPath}?account=${encodeURIComponent(account || "00000000-0000-0000-0000-000000000000")}`, { signal: AbortSignal.timeout(4000) })
         .then((response) => response.ok).catch(() => false);
       if (answers) probeUrl = `${base}${installed.urlPath}`;
       else await new Promise((resolve) => setTimeout(resolve, 1000));

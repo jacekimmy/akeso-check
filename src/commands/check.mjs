@@ -64,10 +64,17 @@ async function projectStripeKey() {
   return null;
 }
 
+/* The account used to wake a probe up. A made-up string like "akeso-warmup"
+   made every app with a real UUID column answer 500 ("invalid input syntax
+   for type uuid"), and the Check then reported a perfectly good probe as not
+   answering. The nil UUID is valid everywhere and matches no row, so an
+   honest probe answers false for it. A named real account is better still. */
+const WARMUP_ACCOUNT = flagValue("--account") || "00000000-0000-0000-0000-000000000000";
+
 async function probeAnswers(url) {
   try {
     const joiner = url.includes("?") ? "&" : "?";
-    const response = await fetch(`${url}${joiner}account=akeso-warmup`, { signal: AbortSignal.timeout(4000) });
+    const response = await fetch(`${url}${joiner}account=${encodeURIComponent(WARMUP_ACCOUNT)}`, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) return false;
     const body = await response.json();
     return typeof body.billingEntitled === "boolean";
