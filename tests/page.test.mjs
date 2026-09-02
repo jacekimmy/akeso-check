@@ -21,7 +21,8 @@ test("an empty project renders a start, not a crash and not a verdict", () => {
   assert.match(html, /Nothing has been checked yet/);
   assert.match(html, /Nothing is waiting for you/);
   assert.match(html, /not measured/, "an unmeasured number is shown as unmeasured");
-  assert.ok(!/\$0\.00 a month<\/div><div class="numLabel">Unpaid/.test(html), "no exposure figure is invented for a project with no sweeps");
+  const exposureAt = html.indexOf("Unpaid access exposure");
+  assert.ok(!/\$\d/.test(html.slice(exposureAt - 200, exposureAt + 200)), "no exposure figure is invented for a project with no sweeps");
 });
 
 test("a real ledger reports its chain as unbroken", async () => {
@@ -48,7 +49,10 @@ test("revenue recovered is never a number, whatever the ledger holds", async () 
   const root = await scratch();
   await appendEntry(root, restoreEntry({ account: "a", direction: "grant", result: "applied", verified: true, reasonCode: "x", idempotencyKey: "k" }));
   const html = renderPage({ root, ledger: await readLedger(root), detection });
-  const revenueBlock = html.slice(html.indexOf("Revenue recovered") - 200, html.indexOf("Revenue recovered"));
+  /* The figure sits beside the label in a ledger column, so look on both
+     sides of it: the rule is "no dollar figure near revenue recovered". */
+  const at = html.indexOf("Revenue recovered");
+  const revenueBlock = html.slice(at, at + 300);
   assert.match(revenueBlock, /not measured/);
   assert.ok(!/\$\d/.test(revenueBlock), "no dollar figure next to revenue recovered");
 });

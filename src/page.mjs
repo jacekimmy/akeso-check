@@ -1,4 +1,4 @@
-import { JOURNEY_CSS, buildJourney, renderJourney } from "./journey.mjs";
+import { buildJourney } from "./journey.mjs";
 import { nextStep } from "./next-step.mjs";
 import { lastOfKind, verifyLedger } from "./ledger.mjs";
 import { pendingApprovals } from "./approvals.mjs";
@@ -7,202 +7,238 @@ import { certificationStatus, coverageStatement } from "./certification.mjs";
 import { scheduleState, describeSchedule } from "./schedule.mjs";
 import { rulePrecision, precisionReport } from "./precision.mjs";
 
-/* The one page.
+/* The one page, drawn as what it is: a ledger.
  *
- * The master document allows exactly one page, "Settings and Receipts", and
- * says that if a second page gets designed, ask whether it is a dashboard in
- * disguise. This is that page: everything Akeso knows about this app, read
- * from the ledger on disk, drawn as the same three-step loop the terminal and
- * the report use, with what is waiting for a human right under it.
- *
- * It is a file on the founder's machine, like the report. It has no buttons
- * that do anything, on purpose: every action is a command, and the page names
- * the command. That keeps the write path where it already is, behind the
- * safety gate, instead of behind a click.
+ * The product keeps an append-only ledger and pays out in receipts, so the
+ * page is a ruled book. A gutter down the left carries the spine of the
+ * three steps and the small labels; the body carries entries as ruled lines;
+ * every figure sits right-aligned in a tabular column, and the totals have
+ * the accountant's double rule above them. One serif line for the headline,
+ * because a ledger has one heading and everything under it is set in the
+ * hand that records facts: monospace, tabular, unadorned.
  *
  * Nothing on this page is drawn from anything but the ledger. A number that
- * was not measured is shown as unmeasured, a stage that did not run is not
- * coloured done, and a month Akeso did not run in is not a clean month.
+ * was not measured is written as unmeasured, a step that did not run is not
+ * inked as done, and a month Akeso did not run in is not a clean month. There
+ * are no buttons: every action is a command, and the last line names it.
  */
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
 const when = (iso) => (iso ? String(iso).slice(0, 16).replace("T", " ") : "");
+const money = (n) => (typeof n === "number" && Number.isFinite(n) ? `$${n.toFixed(2)}` : "");
 
 export function renderPage({ root, ledger = [], detection = null, schemaFingerprint = null, now = Date.now() }) {
   const journey = buildJourney({ detection, ledger });
-  const journeyHtml = renderJourney(journey, { escape: escapeHtml });
   const step = nextStep({ ledger, detection });
-
   const coverage = certificationStatus(ledger, { schemaFingerprint, now });
   const coverageText = coverageStatement(coverage);
-  /* Schedule lines only once coverage is on. Before certification a sweep is
-     a look, not a watch, and "no gaps since Akeso started watching" under a
-     headline saying it is not watching reads as a contradiction. */
-  const schedule = ledger.length && coverage.certified && !coverage.stale ? describeSchedule(scheduleState(ledger, { now })) : [];
+  const covered = coverage.certified && !coverage.stale;
+  const schedule = ledger.length && covered ? describeSchedule(scheduleState(ledger, { now })) : [];
   const waiting = pendingApprovals(ledger, { now });
   const receipt = buildReceipt(ledger);
-  const lastSweep = lastOfKind(ledger, "sweep");
   const lastCheck = lastOfKind(ledger, "check");
   const lastFix = lastOfKind(ledger, "fix");
+  const lastSweep = lastOfKind(ledger, "sweep");
   const intact = verifyLedger(ledger);
-
   const precision = precisionReport(rulePrecision(ledger));
-
   const appName = detection?.framework?.packageName || (root ? root.split("/").filter(Boolean).at(-1) : "this app");
 
-  /* The three things that feed each other, in the order they feed. Each cell
-     says the same three things the journey rows say, so the connection reads
-     as one sentence per stage. */
-  const feed = [
-    {
-      label: "The check found",
-      value: lastCheck?.grade ? `grade ${lastCheck.grade}` : lastCheck ? "the code, unexecuted" : "nothing yet",
-      detail: lastCheck ? `${when(lastCheck.at)}${lastCheck.findings?.length ? `. ${lastCheck.findings.join(". ")}.` : ""}` : "Run the check.",
-      hands: (() => {
-        const failing = (lastCheck?.scenarioResults || []).filter((r) => r.outcome === "fail").length;
-        /* A passing check hands nothing to the fix; saying "0 failing scenarios,
-           handed to the fix" describes a handoff that did not happen. */
-        return failing > 0 ? `${failing} failing scenario${failing === 1 ? "" : "s"}, handed to the fix` : "";
-      })(),
+  /* The spine: one entry per step, each a ruled line with the fact on the
+     right. "done" is inked only when the step executed. */
+  const failing = (lastCheck?.scenarioResults || []).filter((r) => r.outcome === "fail").length;
+  /* A fact is coloured by what it means, never by which step it belongs to:
+     "mismatches found" on a step that ran fine is a finding, not good news. */
+  const stageFacts = {
+    checked: {
+      fact: lastCheck?.grade ? `grade ${lastCheck.grade}` : lastCheck ? "code read only" : "not run",
+      tone: lastCheck?.grade === "A" ? "ok" : lastCheck?.grade && lastCheck.grade !== "?" ? "bad" : "",
+      sub: [
+        lastCheck ? when(lastCheck.at) : "",
+        failing > 0 ? `${failing} failing scenario${failing === 1 ? "" : "s"}, handed to the fix` : "",
+        lastCheck?.findings?.length ? lastCheck.findings.join("; ") : "",
+      ].filter(Boolean),
     },
-    {
-      label: "The fix wrote",
-      value: lastFix ? `${lastFix.files?.length || 0} files` : "nothing yet",
-      detail: lastFix ? `${when(lastFix.at)}. ${lastFix.repairs?.length || 0} repairs: ${(lastFix.repairs || []).join(", ")}` : "Nothing to hand on until the check finds something.",
-      hands: lastFix ? "Correct handling from now on, handed to the monitor to keep true" : "",
+    repaired: {
+      fact: lastFix ? `${lastFix.files?.length || 0} files` : journey.stages[1].state === "not_needed" ? "not needed" : "not run",
+      tone: journey.stages[1].state === "done" ? "ok" : journey.stages[1].state === "failed" ? "bad" : "",
+      sub: [
+        lastFix ? when(lastFix.at) : "",
+        lastFix?.repairs?.length ? `${lastFix.repairs.length} repairs: ${lastFix.repairs.join(", ")}` : "",
+        journey.stages[1].state === "done" ? "proven: the same test passed afterwards" : journey.stages[1].state === "failed" ? "not proven: the test still fails" : "",
+      ].filter(Boolean),
     },
-    {
-      label: "The monitor saw",
-      value: lastSweep
-        ? lastSweep.couldNotRun ? "a run that could not finish"
-          : lastSweep.comparison?.comparable === false ? "nothing it could compare"
-          : lastSweep.comparison?.clean ? "everything matching" : "accounts that do not match"
-        : "nothing yet",
-      detail: lastSweep
-        ? `${when(lastSweep.at)}. ${lastSweep.comparison?.counts?.matched ?? 0} accounts compared.${lastSweep.couldNotRun ? ` Stopped: ${lastSweep.couldNotRun}` : ""}`
-        : "Runs after the code passes.",
-      hands: waiting.length ? `${waiting.length} removal${waiting.length === 1 ? "" : "s"} handed to you to decide` : "",
+    watched: {
+      fact: !lastSweep ? "not run"
+        : lastSweep.couldNotRun ? "could not run"
+        : lastSweep.comparison?.comparable === false ? "compared nothing"
+        : lastSweep.comparison?.clean ? "all matching" : "mismatches found",
+      tone: !lastSweep ? "" : lastSweep.couldNotRun ? "bad" : lastSweep.comparison?.comparable === false ? "" : lastSweep.comparison?.clean ? "ok" : "bad",
+      sub: [
+        lastSweep ? when(lastSweep.at) : "",
+        lastSweep && !lastSweep.couldNotRun ? `${lastSweep.comparison?.counts?.matched ?? 0} accounts compared` : "",
+        lastSweep?.couldNotRun ? String(lastSweep.couldNotRun) : "",
+      ].filter(Boolean),
     },
-  ];
+  };
 
-  const feedHtml = feed.map((cell) => `<div class="cell">
-    <div class="cellLabel">${escapeHtml(cell.label)}</div>
-    <div class="cellValue">${escapeHtml(cell.value)}</div>
-    <div class="cellDetail">${escapeHtml(cell.detail)}</div>
-    ${cell.hands ? `<div class="cellHands">${escapeHtml(cell.hands)}</div>` : ""}
-  </div>`).join("");
+  const spine = journey.stages.map((stage, i) => {
+    const facts = stageFacts[stage.id];
+    const last = i === journey.stages.length - 1;
+    return `<div class="entry st-${stage.state}${stage.id === journey.currentId ? " current" : ""}">
+      <div class="gutter"><span class="node"></span>${last ? "" : `<span class="rail"></span>`}</div>
+      <div class="line">
+        <span class="label">${escapeHtml(stage.label)}</span>
+        <span class="fact ${facts.tone}">${escapeHtml(facts.fact)}</span>
+      </div>
+      ${facts.sub.length ? `<div class="subline">${facts.sub.map((s) => `<span>${escapeHtml(s)}</span>`).join("")}</div>` : ""}
+    </div>`;
+  }).join("");
 
-  const waitingHtml = waiting.length
-    ? waiting.map((row) => `<div class="row ${row.ready ? "warn" : "mute"}">
-        <span class="mark">${row.ready ? "!" : "·"}</span>
-        <span class="name">${escapeHtml(row.account)}<span class="sub">${escapeHtml(row.reason || "")}${typeof row.priceMonthly === "number" ? ` · $${row.priceMonthly.toFixed(2)} a month at list` : ""}</span></span>
-        <span class="detail">${row.ready ? "ready for your yes" : `opens ${when(row.readyAt)}`}</span>
-      </div>`).join("")
-    : `<div class="row mute"><span class="mark">·</span><span class="name wide">Nothing is waiting for you. Akeso never takes access away on its own, so this list is the only place removals ever appear.</span></div>`;
+  /* The rule is written whether or not anything is waiting: a reader who
+     lands on a list of accounts should never wonder whether Akeso already
+     acted on it. */
+  const waitingRows = waiting.length
+    ? waiting.map((row) => `<div class="line ${row.ready ? "ready" : ""}">
+        <span class="label">${escapeHtml(row.account)}<span class="why">${escapeHtml(row.reason || "")}</span></span>
+        <span class="fig">${escapeHtml(money(row.priceMonthly))}</span>
+        <span class="fact">${row.ready ? "ready for your yes" : `opens ${escapeHtml(when(row.readyAt))}`}</span>
+      </div>`).join("") + `<div class="subline"><span>Akeso never removes access on its own. Nothing above has happened.</span></div>`
+    : `<div class="line quiet"><span class="label">Nothing is waiting for you.</span><span class="fact">Akeso never removes access on its own</span></div>`;
 
-  const numbers = [
-    { label: "Access restored to paying customers", value: String(receipt.accessRestored), note: `${receipt.verifiedRestores} confirmed by reading back` },
-    { label: "Access removed after cancellation", value: String(receipt.accessRemoved), note: "only ever after a person said yes" },
-    { label: "Unpaid access exposure, per sweep", value: receipt.sweeps ? `$${receipt.unpaidAccessExposure.toFixed(2)} a month` : "not measured", note: "at list price. Exposure, not money recovered" },
-    { label: "Revenue recovered", value: "not measured", note: "Akeso does not see your payouts, so it will not put a number here" },
-  ].map((n) => `<div class="num"><div class="numValue">${escapeHtml(n.value)}</div><div class="numLabel">${escapeHtml(n.label)}</div><div class="numNote">${escapeHtml(n.note)}</div></div>`).join("");
+  const coverageRows = [
+    `<div class="line ${covered ? "on" : "quiet"}"><span class="label">${escapeHtml(coverageText.headline)}</span><span class="fact">${covered ? "covered" : "not covered"}</span></div>`,
+    ...(covered ? [] : (coverageText.lines || []).slice(1).map((l) => `<div class="subline"><span>${escapeHtml(l)}</span></div>`)),
+    ...schedule.map((l) => `<div class="subline"><span>${escapeHtml(l)}</span></div>`),
+  ].join("");
+
+  const receiptRows = `
+    <div class="line"><span class="label">Access restored to paying customers</span><span class="fig">${receipt.accessRestored}</span></div>
+    <div class="subline"><span>${receipt.verifiedRestores} confirmed by reading back</span></div>
+    <div class="line"><span class="label">Access removed after cancellation</span><span class="fig">${receipt.accessRemoved}</span></div>
+    <div class="subline"><span>only ever after a person said yes</span></div>
+    <div class="line"><span class="label">Unpaid access exposure, per sweep</span><span class="fig">${receipt.sweeps ? `${money(receipt.unpaidAccessExposure)} / mo` : "not measured"}</span></div>
+    <div class="subline"><span>at list price; exposure, not money recovered</span></div>
+    <div class="line total"><span class="label">Revenue recovered</span><span class="fig">not measured</span></div>
+    <div class="subline"><span>Akeso does not see your payouts, so it will not put a number here</span></div>
+    ${precision?.length ? precision.map((l) => `<div class="subline"><span>${escapeHtml(l)}</span></div>`).join("") : ""}`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Akeso · ${escapeHtml(appName)}</title>
 <style>
-  :root { --bg:#f5f6f8; --card:#ffffff; --ink:#16181d; --ink2:#4f5666; --ink3:#878e9b; --line:#e8eaee;
-    --ok:#12784b; --warn:#96620a; --bad:#b3261e; --note:#2f4a78; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0c0e12; --card:#14171d; --ink:#e9ebef; --ink2:#a8aeba;
-    --ink3:#767d8a; --line:#262b33; --ok:#4cbe83; --warn:#dfa94c; --bad:#ef8578; --note:#8aa9dc; } }
+  :root {
+    --paper:#f6f3ec; --paper2:#efebe2; --ink:#1c1b18; --ink2:#5d5950; --ink3:#8f8a7e; --rule:#dcd6c8; --rule2:#c9c2b1;
+    --ok:#1f7a4d; --bad:#b23a2e; --wait:#9a6b12;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --paper:#131211; --paper2:#1a1917; --ink:#ece8df; --ink2:#b3ada0; --ink3:#7d786d; --rule:#2a2825; --rule2:#3a3733;
+    --ok:#5ec48b; --bad:#f08a7c; --wait:#e0b45a;
+  } }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 ui-sans-serif,-apple-system,system-ui,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
-  .wrap { max-width:720px; margin:0 auto; padding:32px 20px 64px; }
-  .local { text-align:center; font-size:12.5px; color:var(--ink3); margin:0 0 18px; }
-  .shell { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:40px 48px 44px;
-    box-shadow:0 1px 2px rgba(16,20,28,.04), 0 8px 24px -18px rgba(16,20,28,.18); }
-  .brand { display:flex; align-items:baseline; gap:7px; padding-bottom:24px; margin-bottom:34px; border-bottom:1px solid var(--line); }
-  .brand .wordmark { font-size:15px; font-weight:600; letter-spacing:-.01em; }
-  .brand .wordmarkSub { font-size:15px; color:var(--ink3); }
-  .brand .when { margin-left:auto; font-size:12.5px; color:var(--ink3); font-variant-numeric:tabular-nums; }
-  h1 { margin:0 0 6px; font-size:22px; font-weight:600; letter-spacing:-.015em; line-height:1.25; }
-  .lede { margin:0 0 30px; color:var(--ink2); font-size:14.5px; max-width:58ch; }
-  h2 { font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin:44px 0 10px; }
-  .intro { margin:0 0 14px; color:var(--ink2); font-size:13.5px; max-width:58ch; }
-  .feed { display:grid; grid-template-columns:repeat(3, 1fr); gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-top:22px; }
-  .cell { padding:18px 18px 16px; border-right:1px solid var(--line); position:relative; }
-  .cell:last-child { border-right:0; }
-  .cell:not(:last-child)::after { content:""; position:absolute; right:-7px; top:50%; width:12px; height:12px; border-top:1px solid var(--line); border-right:1px solid var(--line); transform:translateY(-50%) rotate(45deg); background:var(--card); }
-  .cellLabel { font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink3); }
-  .cellValue { font-size:17px; font-weight:600; letter-spacing:-.01em; margin:5px 0 4px; }
-  .cellDetail { font-size:12.5px; color:var(--ink2); }
-  .cellHands { margin-top:9px; font-size:12px; color:var(--ink3); border-top:1px dashed var(--line); padding-top:8px; }
-  .rows { border-top:1px solid var(--line); }
-  .row { display:flex; gap:12px; padding:12px 2px; border-bottom:1px solid var(--line); align-items:baseline; font-size:14px; }
-  .mark { width:18px; text-align:center; flex:none; font-weight:600; }
-  .row.warn .mark { color:var(--warn); } .row.mute { color:var(--ink3); }
-  .name { flex:1; } .name.wide { flex:auto; }
-  .name .sub { display:block; font-size:12.5px; color:var(--ink3); }
-  .detail { color:var(--ink3); font-size:12.5px; text-align:right; max-width:40%; }
-  .nums { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px; }
-  .num { border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
-  .numValue { font-size:22px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
-  .numLabel { font-size:13.5px; margin-top:2px; }
-  .numNote { font-size:12px; color:var(--ink3); margin-top:4px; }
-  .cover { border:1px solid var(--line); border-radius:12px; padding:18px 20px; font-size:14px; color:var(--ink2); }
-  .cover.on { border-color:color-mix(in srgb, var(--ok) 40%, var(--line)); }
-  .cover .head { font-weight:600; color:var(--ink); margin-bottom:4px; }
-  ul.lines { margin:8px 0 0; padding-left:18px; color:var(--ink2); font-size:13.5px; } ul.lines li { margin-bottom:6px; }
-  .nextBox { margin-top:34px; border:1px solid var(--line); border-radius:12px; padding:22px 24px; background:color-mix(in srgb, var(--ink) 2.5%, transparent); }
-  .nextBox .nextLabel { font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); }
-  .nextBox h3 { margin:6px 0 5px; font-size:16.5px; font-weight:600; letter-spacing:-.01em; }
-  .nextBox p { margin:0 0 14px; color:var(--ink2); font-size:13.5px; max-width:58ch; }
-  pre.cmd { background:color-mix(in srgb, var(--ink) 5%, transparent); border-radius:8px; padding:13px 15px; overflow-x:auto;
-    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
-  footer { margin-top:24px; text-align:center; font-size:12px; color:var(--ink3); }
-  @media (max-width:640px) { .shell { padding:28px 20px; } .feed { grid-template-columns:1fr; } .cell { border-right:0; border-bottom:1px solid var(--line); } .cell::after { display:none !important; } .nums { grid-template-columns:1fr; } }
-${JOURNEY_CSS}
-</style></head><body><div class="wrap">
-  <div class="local">This page is a file on your computer. Nothing was sent anywhere.</div>
-  <div class="shell">
-  <div class="brand"><span class="wordmark">Akeso</span><span class="wordmarkSub">${escapeHtml(appName)}</span><span class="when">${escapeHtml(new Date(now).toISOString().slice(0, 10))}</span></div>
+  body { margin:0; background:var(--paper); color:var(--ink); font:14px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
+  .book { max-width:760px; margin:0 auto; padding:56px 28px 80px; }
 
-  <h1>${escapeHtml(step.headline)}</h1>
-  <p class="lede">${escapeHtml(step.why || "")}</p>
+  .masthead { display:grid; grid-template-columns:132px 1fr; align-items:baseline; padding-bottom:14px; border-bottom:1px solid var(--ink); }
+  .masthead .name { font-size:13px; letter-spacing:.14em; text-transform:uppercase; }
+  .masthead .meta { display:flex; justify-content:space-between; gap:16px; color:var(--ink3); font-size:12.5px; }
+  .head { display:grid; grid-template-columns:132px 1fr; padding:34px 0 30px; border-bottom:1px solid var(--rule); }
+  .head h1 { margin:0; font:500 30px/1.18 ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; letter-spacing:-.008em; max-width:32ch; }
+  .head .why { grid-column:2; margin:12px 0 0; color:var(--ink2); font-size:13px; line-height:1.55; max-width:60ch; }
 
-  ${journeyHtml.strip}
+  .section { display:grid; grid-template-columns:132px 1fr; padding:26px 0 4px; }
+  .section .cap { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); padding-top:9px; }
+  .section .body { min-width:0; }
 
-  <div class="feed">${feedHtml}</div>
+  .entry { display:grid; grid-template-columns:36px 1fr; align-items:start; }
+  .entry .gutter { position:relative; height:100%; }
+  .entry .node { position:absolute; left:6px; top:14px; width:9px; height:9px; border-radius:50%; border:1.5px solid var(--ink3); background:var(--paper); }
+  .entry .rail { position:absolute; left:10px; top:24px; bottom:-14px; width:1.5px; background:var(--rule2); }
+  .entry.st-done .node { background:var(--ok); border-color:var(--ok); } .entry.st-done .rail { background:var(--ok); }
+  .entry.st-not_needed .node { background:var(--rule2); border-color:var(--rule2); } .entry.st-not_needed .rail { background:var(--ok); }
+  .entry.st-failed .node { background:var(--bad); border-color:var(--bad); }
+  .entry.st-partial .node { border-color:var(--wait); }
+  .entry.st-next .node { border-color:var(--ink); border-style:dashed; }
+  .entry.st-todo .label, .entry.st-todo .fact { color:var(--ink3); }
+  .entry .line, .entry .subline { grid-column:2; }
+  .fact.ok { color:var(--ok); } .fact.bad { color:var(--bad); }
 
-  ${journeyHtml.detail}
+  .line { display:flex; gap:18px; align-items:baseline; padding:9px 0; border-bottom:1px solid var(--rule); }
+  .line .label { flex:1; min-width:0; }
+  .line .why { display:block; color:var(--ink3); font-size:12px; margin-top:2px; }
+  .line .fig { min-width:96px; text-align:right; }
+  .line .fact { color:var(--ink2); text-align:right; white-space:nowrap; }
+  .line.quiet .label, .line.quiet .fact { color:var(--ink3); }
+  .line.on .fact { color:var(--ok); }
+  .line.ready .fact { color:var(--wait); }
+  .line.total { border-top:1px solid var(--ink); border-bottom:3px double var(--ink); margin-top:8px; padding:11px 0; }
+  .subline { display:flex; flex-wrap:wrap; gap:0 18px; padding:5px 0 8px; color:var(--ink3); font-size:12px; border-bottom:1px solid var(--rule); }
+  .subline span { min-width:0; }
+  .entry .subline { border-bottom:0; padding:4px 0 10px; }
+  .entry .line { border-bottom:0; }
 
-  <h2>Waiting for you</h2>
-  <p class="intro">Akeso restores access on its own. It never removes access on its own. Anything it wants to take away sits here until you decide.</p>
-  <div class="rows">${waitingHtml}</div>
-  ${waiting.length ? `<pre class="cmd" style="margin-top:12px">npx akeso-check approvals</pre>` : ""}
+  .next { display:grid; grid-template-columns:132px 1fr; padding:30px 0 0; }
+  .next .cap { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); padding-top:12px; }
+  .next pre { margin:0; padding:12px 16px; background:var(--paper2); border:1px solid var(--rule2); font:inherit; overflow-x:auto; }
+  .next pre::before { content:"$ "; color:var(--ink3); }
 
-  <h2>Coverage</h2>
-  <div class="cover ${coverage.certified && !coverage.stale ? "on" : ""}">
-    <div class="head">${escapeHtml(coverageText.headline)}</div>
-    ${(coverageText.lines || []).slice(1).map((line) => `<div>${escapeHtml(line)}</div>`).join("")}
-    ${schedule.length ? `<ul class="lines">${schedule.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : ""}
+  .colophon { margin-top:56px; padding-top:12px; border-top:1px solid var(--rule); display:flex; justify-content:space-between; gap:16px; color:var(--ink3); font-size:12px; }
+  .colophon .broken { color:var(--bad); }
+
+  @media (max-width:560px) {
+    .book { padding:36px 18px 60px; }
+    .masthead, .head, .section, .next { grid-template-columns:1fr; }
+    .section .cap, .next .cap { padding:0 0 6px; }
+    .head .why { grid-column:1; }
+    .line { flex-wrap:wrap; }
+    .line .fact { white-space:normal; text-align:left; width:100%; }
+    .colophon { flex-direction:column; gap:4px; }
+  }
+</style></head><body><div class="book">
+
+  <div class="masthead">
+    <span class="name">Akeso</span>
+    <span class="meta"><span>${escapeHtml(appName)}</span><span>${escapeHtml(new Date(now).toISOString().slice(0, 10))}</span></span>
   </div>
 
-  <h2>Receipts</h2>
-  <p class="intro">Three numbers, never added together. Only money actually collected would count as recovered, and Akeso cannot see that.</p>
-  <div class="nums">${numbers}</div>
-  ${precision?.length ? `<ul class="lines">${precision.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : ""}
-
-  <div class="nextBox">
-    <div class="nextLabel">Do this next</div>
-    <h3>${escapeHtml(step.headline)}</h3>
-    ${step.why ? `<p>${escapeHtml(step.why)}</p>` : ""}
-    ${step.command ? `<pre class="cmd">${escapeHtml(step.command)}</pre>` : ""}
+  <div class="head">
+    <span></span>
+    <h1>${escapeHtml(step.headline)}</h1>
+    ${step.why ? `<p class="why">${escapeHtml(step.why)}</p>` : ""}
   </div>
 
+  <div class="section">
+    <span class="cap">Steps</span>
+    <div class="body">${spine}</div>
   </div>
-  <footer>Akeso · ${ledger.length} entries in .akeso/ledger.jsonl · ${intact.intact ? "chain unbroken" : `chain BROKEN at entry ${intact.brokenAt}`} · every number above was read from that file</footer>
+
+  <div class="section">
+    <span class="cap">Waiting</span>
+    <div class="body">${waitingRows}</div>
+  </div>
+
+  <div class="section">
+    <span class="cap">Coverage</span>
+    <div class="body">${coverageRows}</div>
+  </div>
+
+  <div class="section">
+    <span class="cap">Receipts</span>
+    <div class="body">${receiptRows}</div>
+  </div>
+
+  ${step.command ? `<div class="next"><span class="cap">Next</span><pre>${escapeHtml(step.command)}</pre></div>` : ""}
+
+  <div class="colophon">
+    <span>${ledger.length} entries in .akeso/ledger.jsonl</span>
+    <span class="${intact.intact ? "" : "broken"}">${intact.intact ? "chain unbroken" : `chain BROKEN at entry ${intact.brokenAt}`}</span>
+  </div>
+
+  <div class="colophon" style="border-top:0;margin-top:6px;padding-top:0">
+    <span>This page is a file on your computer. Nothing was sent anywhere.</span>
+    <span>${waiting.length ? "npx akeso-check approvals" : ""}</span>
+  </div>
+
 </div></body></html>`;
 }
