@@ -28,7 +28,7 @@ test("the hosted copy has the run panel and the file loader, the local copy does
   const local = renderDashboard({ ledger: [], appName: "demo", hosted: false });
   assert.ok(hosted.includes('id="ledgerFile"') && hosted.includes('id="tabs"'));
   assert.ok(!local.includes('id="ledgerFile"') && !local.includes('id="tabs"'));
-  assert.match(hosted, /never uploaded/);
+  assert.match(hosted, /never uploaded/i);
 });
 
 test("the ledger travels embedded, byte for byte", async () => {
@@ -38,7 +38,7 @@ test("the ledger travels embedded, byte for byte", async () => {
   const html = renderDashboard({ ledger, appName: "demo" });
   const embedded = JSON.parse(html.match(/window\.AKESO = (\{.*?\});\s*window\.AKESO\.shell/s)[1]);
   assert.deepEqual(embedded.ledger, ledger, "the browser folds exactly what the file holds");
-  assert.equal(embedded.scenarioNames["immediate-cancel"], "Immediate cancellation removes access");
+  assert.equal(embedded.scenarioNames["immediate-cancel"], "Customer cancels immediately: access ends");
 });
 
 test("a hostile ledger cannot break out of the script or the markup", async () => {
