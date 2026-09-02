@@ -35,24 +35,24 @@ const SCENARIO_NAMES = {
 const CSS = `
   :root {
     --bg:#f6f5f1; --card:#ffffff; --ink:#17191d; --ink2:#5d636c; --ink3:#8a9099; --line:#e6e4dd; --tint:#f1f0eb;
-    --ok:#0e8f87; --okSoft:#dcf1ef; --bad:#e5484d; --badSoft:#fbdcdd; --wait:#e0961a; --waitSoft:#fbecd0; --none:#c9cdd3; --link:#0e8f87;
+    --accent:#2b3ae8; --ok:#1e9a6a; --okSoft:#e3f4ec; --bad:#e5484d; --badSoft:#fbdcdd; --wait:#e0961a; --waitSoft:#fbecd0; --none:#c9cdd3; --link:#2b3ae8;
     --frame:#0b0c0e;
   }
   @media (prefers-color-scheme: dark) { :root {
     --bg:#0f1114; --card:#16181c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --line:#262a30; --tint:#1c1f24;
-    --ok:#2fd1c4; --okSoft:#0f3634; --bad:#ff6b6f; --badSoft:#4a1e21; --wait:#f0b13c; --waitSoft:#4a3413; --none:#3a3f47; --link:#2fd1c4;
+    --accent:#7583ff; --ok:#3ccf8e; --okSoft:#123b2c; --bad:#ff6b6f; --badSoft:#4a1e21; --wait:#f0b13c; --waitSoft:#4a3413; --none:#3a3f47; --link:#7583ff;
     --frame:#141619;
   } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 Geist, "Geist Fallback", -apple-system, "SF Pro Text", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
   a { color:inherit; text-decoration:none; }
   code, .mono { font-family:"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:.92em; }
-  :focus-visible { outline:2px solid var(--ok); outline-offset:3px; border-radius:8px; }
-  ::selection { background:color-mix(in srgb, var(--ok) 22%, transparent); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:8px; }
+  ::selection { background:color-mix(in srgb, var(--accent) 22%, transparent); }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   [hidden] { display:none !important; }
   button { font:inherit; }
-  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:40px; padding:0 18px; border-radius:999px; background:var(--ink); color:var(--bg); font-size:14px; font-weight:500; border:0; cursor:pointer; white-space:nowrap; transition:transform .18s ease-out, opacity .18s; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:40px; padding:0 18px; border-radius:999px; background:var(--accent); color:#fff; font-size:14px; font-weight:500; border:0; cursor:pointer; white-space:nowrap; transition:transform .18s ease-out, opacity .18s; }
   .btn:hover { opacity:.92; } .btn:active { transform:scale(.98); }
   .btn.big { height:48px; padding:0 26px; font-size:16px; }
   .btn.sec { background:var(--card); color:var(--ink); border:1px solid var(--line); }
@@ -70,7 +70,7 @@ const CSS = `
   #lock .top { display:flex; align-items:center; justify-content:space-between; padding:22px 24px; font-size:13px; color:var(--ink2); }
   #lock .top .acts a { margin-left:22px; }
   .brand { font-weight:600; font-size:15px; color:var(--ink); display:inline-flex; align-items:center; gap:9px; }
-  .brand i { width:10px; height:10px; border-radius:50%; background:var(--ok); display:inline-block; }
+  .brand i { width:10px; height:10px; border-radius:50%; background:var(--accent); display:inline-block; }
   #lock .body { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 24px 24px; gap:0; }
   .board { margin:0; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-weight:600; text-transform:uppercase; letter-spacing:0; font-size:min(44px, calc((100vw - 48px) / 26 / .62)); line-height:1.18; }
   .board .row { display:block; white-space:pre; }
@@ -79,9 +79,10 @@ const CSS = `
   .board .cell.go span { animation:flap 90ms linear; }
   @keyframes flap { 0% { transform:rotateX(0); } 49% { transform:rotateX(-90deg); } 51% { transform:rotateX(90deg); } 100% { transform:rotateX(0); } }
   .stage { margin-top:28px; perspective:1400px; position:relative; }
-  .stage::before { content:""; position:absolute; left:18%; right:18%; bottom:-14px; height:2px; background:linear-gradient(90deg, transparent, rgba(14,143,135,.9), transparent); z-index:0; pointer-events:none; }
+  .stage::before { content:""; position:absolute; left:18%; right:18%; bottom:-14px; height:2px; background:linear-gradient(90deg, transparent, rgba(43,58,232,.9), transparent); z-index:0; pointer-events:none; }
   .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; background:#08090a; border-radius:10px; border:1px solid rgba(255,255,255,.16); box-shadow:0 36px 70px -34px rgba(0,0,0,.85); overflow:hidden; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
-  .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform .25s ease-out; }
+  .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
+  .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
   .frame .chrome { height:36px; display:flex; align-items:center; gap:14px; padding:0 22px; border-bottom:1px solid rgba(255,255,255,.14); font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8a9099; position:relative; z-index:2; }
   .frame .chrome b { color:#f2f2ee; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .frame .chrome .seal { margin-left:auto; background:none; border:0; padding:0; color:#8a9099; font:inherit; letter-spacing:inherit; text-transform:inherit; }
@@ -92,7 +93,7 @@ const CSS = `
   .frame .panel .eyebrow { margin:0 0 8px; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.08em; color:#8a9099; text-transform:uppercase; }
   .frame .panel .verdict { font-size:30px; }
   .frame .panel .act { margin-top:16px; }
-  .frame .panel .btn { height:34px; padding:0 14px; font-size:13px; background:#f2f2ee; color:#08090a; }
+  .frame .panel .btn { height:34px; padding:0 14px; font-size:13px; }
   .frame .panel .meta { margin-top:14px; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.04em; color:#8a9099; display:flex; align-items:center; gap:8px; }
   .frame .panel .meta i { width:6px; height:6px; border-radius:50%; background:var(--ok); display:inline-block; animation:pulse 2.4s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity:.4; } 50% { opacity:1; } }
@@ -110,7 +111,7 @@ const CSS = `
   .frame .inner .node { box-shadow:none; }
   .frame .inner .tile { width:22px; height:22px; border-radius:3px; }
   .frame .inner .chip { background:none; border:1px solid rgba(255,255,255,.18); color:#f2f2ee; border-radius:3px; }
-  .frame .inner .chip.replaced { border-color:rgba(224,150,26,.7); color:#f0b13c; } .frame .inner .chip.created { border-color:rgba(47,209,196,.6); color:#2fd1c4; }
+  .frame .inner .chip.replaced { border-color:rgba(224,150,26,.7); color:#f0b13c; } .frame .inner .chip.created { border-color:rgba(60,207,142,.6); color:#3ccf8e; }
   .frame .inner .dots i { width:9px; height:9px; border-radius:2px; }
   .frame .inner .legend { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.02em; }
   .frame .inner { position:absolute; left:0; top:0; width:960px; height:440px; transform-origin:0 0; transform:scale(var(--s, 1)); padding:0; color:#f2f2ee; text-align:left; --card:#131518; --line:#24272c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --bg:#0b0c0e; --tint:#1a1d22; --okSoft:#123b2c; --waitSoft:#4a3413; --none:#3a3f47; }
@@ -583,7 +584,7 @@ const JS = String.raw`
   /* the frame keeps a 960x520 layout and scales to whatever size it got */
   function fitFrame() { var fr = $("frame"), inner = $("frameInner"); if (!fr || !inner || fr.offsetWidth === 0 || window.innerWidth <= 720) { if (inner) inner.style.removeProperty("--s"); return; } inner.style.setProperty("--s", String(fr.clientWidth / 960)); }
   window.addEventListener("resize", fitFrame); setTimeout(fitFrame, 0); setTimeout(fitFrame, 300);
-  (function () { var lock = $("lock"), fr = $("frame"); if (!lock || !fr || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return; lock.addEventListener("mousemove", function (e) { var r = fr.getBoundingClientRect(); var px = (e.clientX - (r.left + r.width / 2)) / r.width, py = (e.clientY - (r.top + r.height / 2)) / r.height; fr.style.setProperty("--ry", (px * 7).toFixed(2) + "deg"); fr.style.setProperty("--rx", (6 - py * 6).toFixed(2) + "deg"); }); lock.addEventListener("mouseleave", function () { fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); }); })();
+  (function () { var lock = $("lock"), fr = $("frame"); if (!lock || !fr || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return; var pending = null; lock.addEventListener("mousemove", function (e) { pending = e; if (pending.raf) return; pending.raf = requestAnimationFrame(function () { var ev = pending; pending = null; fr.classList.remove("settle"); var r = fr.getBoundingClientRect(); var px = (ev.clientX - (r.left + r.width / 2)) / r.width, py = (ev.clientY - (r.top + r.height / 2)) / r.height; fr.style.setProperty("--ry", (px * 8).toFixed(2) + "deg"); fr.style.setProperty("--rx", (6 - py * 7).toFixed(2) + "deg"); }); }); lock.addEventListener("mouseleave", function () { fr.classList.add("settle"); fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); }); })();
 
   /* the field: one dot per customer, a slow wave turning them green */
   (function () {
@@ -607,7 +608,7 @@ const JS = String.raw`
         var edge = Math.min(1, Math.max(0, (dist - 0.16) / 0.34));
         var a = Math.min(0.6, (0.06 + 0.5 * g)) * edge;
         var amber = hz > 0.993 && ((t * 0.7 + hz * 60) % 7) < 0.7;
-        ctx.fillStyle = amber ? "rgba(224,150,26," + (0.9 * edge) + ")" : dark ? "rgba(47,209,196," + a + ")" : "rgba(14,143,135," + a + ")";
+        ctx.fillStyle = amber ? "rgba(224,150,26," + (0.9 * edge) + ")" : dark ? "rgba(117,131,255," + a + ")" : "rgba(43,58,232," + a + ")";
         ctx.beginPath(); ctx.arc(x, y, R + g * 1.1, 0, 6.2832); ctx.fill();
       }
       if (!still) requestAnimationFrame(draw);
