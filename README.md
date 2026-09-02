@@ -148,7 +148,13 @@ write, grants included.
 ```
 npx akeso-check statement                    the month, in plain numbers
 npx akeso-check statement --html out.html    the same thing as a page
+npx akeso-check page                         your dashboard, drawn from the ledger
 ```
+
+`page` writes `akeso.html` next to your project and opens it: the loop with a
+live state per step, every account where Stripe and your app disagree, what is
+waiting for your yes, and the receipts. It is one file with no network requests;
+the same dashboard, with a demo ledger, is at https://akeso-check.vercel.app.
 
 The statement keeps three numbers apart and never adds them: access restored,
 access removed, and exposure at list price. Revenue recovered is reported as
