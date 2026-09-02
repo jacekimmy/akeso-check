@@ -75,8 +75,22 @@ const CSS = `
   .rotator { display:grid; width:100%; max-width:880px; }
   .rotator h1 { grid-area:1 / 1; margin:0; font-size:clamp(34px, 3.6vw, 52px); line-height:1.05; font-weight:600; letter-spacing:-.04em; text-wrap:balance; opacity:0; transition:opacity 900ms ease; }
   .rotator h1.on { opacity:1; }
-  .frame { margin-top:28px; height:min(50vh, 470px); aspect-ratio:96 / 47; max-width:100%; width:auto; background:var(--frame); border-radius:12px; border:1px solid rgba(255,255,255,.08); box-shadow:0 30px 80px -30px rgba(10,12,14,.45), inset 0 1px 0 rgba(255,255,255,.04); overflow:hidden; position:relative; opacity:0; transform:translateY(16px); transition:opacity .6s ease-out, transform .6s ease-out; }
-  .frame.in { opacity:1; transform:none; }
+  .rotator h1.flap { perspective:600px; }
+  .rotator h1.flap .w { display:inline-block; white-space:nowrap; }
+  .rotator h1.flap .c { display:inline-block; transform-origin:50% 50%; transition:transform 55ms linear; backface-visibility:hidden; }
+  .rotator h1.flap .c.mid { transform:rotateX(90deg); }
+  .stage { margin-top:28px; perspective:1400px; position:relative; }
+  .stage::before { content:""; position:absolute; left:10%; right:10%; top:20%; bottom:-6%; background:radial-gradient(closest-side, rgba(30,154,106,.28), rgba(30,154,106,0)); filter:blur(30px); z-index:0; pointer-events:none; }
+  .frame { height:min(50vh, 470px); aspect-ratio:96 / 47; max-width:100%; width:auto; background:linear-gradient(180deg, #15181c, var(--frame) 40%); border-radius:14px; border:1px solid rgba(255,255,255,.1); box-shadow:0 50px 120px -40px rgba(30,154,106,.35), 0 40px 80px -30px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.08); overflow:hidden; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
+  .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform .25s ease-out; }
+  .frame::after { content:""; position:absolute; inset:0; background:linear-gradient(115deg, rgba(255,255,255,.07), rgba(255,255,255,0) 35%); pointer-events:none; }
+  .frame .inner .loop { background:linear-gradient(180deg, #1b1f24, #141719); border-color:rgba(255,255,255,.08); box-shadow:0 18px 40px -16px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06); transform:translateZ(30px); }
+  .frame .inner .status { transform:translateZ(16px); }
+  .frame .inner .ring { filter:drop-shadow(0 0 18px rgba(224,150,26,.35)); }
+  .frame .inner .ring.ok { filter:drop-shadow(0 0 18px rgba(30,154,106,.4)); }
+  .frame .inner .btn { box-shadow:0 8px 20px -8px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.5); }
+  .frame .inner .node { box-shadow:0 4px 10px -3px rgba(0,0,0,.6); }
+  .frame .inner .chip { box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
   .frame .inner { position:absolute; left:0; top:0; width:960px; height:470px; transform-origin:0 0; transform:scale(var(--s, 1)); padding:44px 52px; color:#f2f2ee; text-align:left; --card:#131518; --line:#24272c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --bg:#0b0c0e; --tint:#1a1d22; --okSoft:#123b2c; --waitSoft:#4a3413; --none:#3a3f47; }
   .frame .inner .status { margin:0; }
   .frame .inner .loop { margin-top:36px; }
@@ -239,7 +253,7 @@ const CSS = `
   @media (max-width:720px) {
     .wrap { padding:0 20px; }
     #lock .body { padding:0 20px 100px; justify-content:flex-start; padding-top:24px; } .rotator h1 { font-size:32px; }
-    .frame { height:auto; aspect-ratio:auto; width:100%; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:22px; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
+    .stage { perspective:none; width:100%; } .stage::before { display:none; } .frame { height:auto; aspect-ratio:auto; width:100%; transform:none !important; box-shadow:0 24px 60px -30px rgba(0,0,0,.5); } .frame .inner .loop, .frame .inner .status { transform:none; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:22px; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
     .arow { display:grid; grid-template-columns:36px 1fr auto; row-gap:6px; } .arow .st { grid-column:2 / -1; } .arow .dis { grid-column:2 / -1; text-align:left; }
     #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; }
     h1.big { font-size:32px; } .verdict { font-size:30px; }
@@ -542,6 +556,7 @@ const JS = String.raw`
   /* the frame keeps a 960x520 layout and scales to whatever size it got */
   function fitFrame() { var fr = $("frame"), inner = $("frameInner"); if (!fr || !inner || fr.offsetWidth === 0 || window.innerWidth <= 720) { if (inner) inner.style.removeProperty("--s"); return; } inner.style.setProperty("--s", String(fr.clientWidth / 960)); }
   window.addEventListener("resize", fitFrame); setTimeout(fitFrame, 0); setTimeout(fitFrame, 300);
+  (function () { var lock = $("lock"), fr = $("frame"); if (!lock || !fr || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return; lock.addEventListener("mousemove", function (e) { var r = fr.getBoundingClientRect(); var px = (e.clientX - (r.left + r.width / 2)) / r.width, py = (e.clientY - (r.top + r.height / 2)) / r.height; fr.style.setProperty("--ry", (px * 7).toFixed(2) + "deg"); fr.style.setProperty("--rx", (6 - py * 6).toFixed(2) + "deg"); }); lock.addEventListener("mouseleave", function () { fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); }); })();
 
   /* the field: one dot per customer, a slow wave turning them green */
   (function () {
@@ -556,24 +571,53 @@ const JS = String.raw`
       size(); var t = (now - t0) / 1000, w = c.clientWidth, h = c.clientHeight, cx = w / 2, cy = h / 2;
       if (!w) { requestAnimationFrame(draw); return; }
       ctx.clearRect(0, 0, w, h);
-      for (var y = GAP / 2; y < h; y += GAP) for (var x = GAP / 2; x < w; x += GAP) {
+      for (var gy = GAP / 2; gy < h; gy += GAP) for (var gx = GAP / 2; gx < w; gx += GAP) {
+        var hz = hash(gx, gy), hz2 = hash(gy, gx);
+        var x = gx + (hz - 0.5) * 9, y = gy + (hz2 - 0.5) * 9;
         var dx = (x - cx) / w, dy = (y - cy) / h, dist = Math.sqrt(dx * dx + dy * dy);
-        var wave = 0.5 + 0.5 * Math.sin(x * 0.011 - t * 0.55 + Math.sin(y * 0.009 + t * 0.25) * 1.6);
-        var g = Math.pow(wave, 3);
-        var edge = Math.min(1, Math.max(0, (dist - 0.18) / 0.32));
-        var a = (0.08 + 0.42 * g) * edge;
-        var hz = hash(x, y);
-        var amber = hz > 0.997 && ((t * 0.5 + hz * 40) % 9) < 0.8;
+        var wave = 0.5 + 0.5 * Math.sin(x * 0.012 - t * 0.9 + hz * 2.4 + Math.sin(y * 0.01 + t * 0.4 + hz2 * 3) * 1.8);
+        var g = Math.pow(wave, 2.6) * (0.6 + 0.8 * hz2);
+        var edge = Math.min(1, Math.max(0, (dist - 0.16) / 0.34));
+        var a = Math.min(0.6, (0.06 + 0.5 * g)) * edge;
+        var amber = hz > 0.993 && ((t * 0.7 + hz * 60) % 7) < 0.7;
         ctx.fillStyle = amber ? "rgba(224,150,26," + (0.9 * edge) + ")" : dark ? "rgba(60,207,142," + a + ")" : "rgba(30,154,106," + a + ")";
-        ctx.beginPath(); ctx.arc(x, y, R + g * 0.9, 0, 6.2832); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, R + g * 1.1, 0, 6.2832); ctx.fill();
       }
       if (!still) requestAnimationFrame(draw);
     }
     requestAnimationFrame(draw);
   })();
 
-  /* the lock screen's two lines, cross-fading */
-  (function () { var hs = document.querySelectorAll(".rotator h1"); if (hs.length < 2) return; var i = 0; setInterval(function () { hs[i].classList.remove("on"); i = (i + 1) % hs.length; hs[i].classList.add("on"); }, 3000); })();
+  /* the lock screen's two lines: a split-flap board, letter by letter */
+  (function () {
+    var hs = document.querySelectorAll(".rotator h1"); if (hs.length < 2) return;
+    var still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var lines = Array.prototype.map.call(hs, function (h) { return h.textContent; });
+    if (still) { var i0 = 0; setInterval(function () { hs[i0].classList.remove("on"); i0 = (i0 + 1) % hs.length; hs[i0].classList.add("on"); }, 3000); return; }
+    var board = hs[0]; board.classList.add("flap", "on"); for (var k = 1; k < hs.length; k++) hs[k].remove();
+    var POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz?";
+    function cells(text) { board.innerHTML = text.split(" ").map(function (w) { return '<span class="w">' + w.split("").map(function (ch) { return '<span class="c">' + esc(ch) + "</span>"; }).join("") + "</span>"; }).join(" "); return board.querySelectorAll(".c"); }
+    var cur = 0; cells(lines[0]);
+    function flipTo(text) {
+      var from = board.querySelectorAll(".c"), target = cells(text), n = target.length;
+      var fromChars = Array.prototype.map.call(from, function (c) { return c.textContent; });
+      target.forEach(function (cell, i) {
+        var final = cell.textContent, start = fromChars[i] || " ";
+        cell.textContent = start;
+        var steps = 5 + Math.floor(Math.random() * 5), delay = i * 28 + Math.random() * 40, step = 0;
+        setTimeout(function tick() {
+          cell.classList.add("mid");
+          setTimeout(function () {
+            step++;
+            cell.textContent = step >= steps ? final : POOL.charAt(Math.floor(Math.random() * POOL.length));
+            cell.classList.remove("mid");
+            if (step < steps) setTimeout(tick, 62);
+          }, 55);
+        }, delay);
+      });
+    }
+    setInterval(function () { cur = (cur + 1) % lines.length; flipTo(lines[cur]); }, 3600);
+  })();
 
   /* section index */
   (function () { var links = document.querySelectorAll(".index a"); if (!links.length || !window.IntersectionObserver) return; var io = new IntersectionObserver(function (es) { es.forEach(function (en) { if (en.isIntersecting) links.forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + en.target.id); }); }); }, { rootMargin: "-30% 0px -60% 0px" }); document.querySelectorAll(".sections section[id]").forEach(function (s) { io.observe(s); }); })();
@@ -602,7 +646,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
       <div class="body">
         <div class="rotator" aria-live="off"><h1 class="on">Did your customers get what they paid for?</h1><h1>Do your canceled customers still have access?</h1></div>
-        <div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div></div>
+        <div class="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div></div></div>
         <a href="#" class="btn big" data-screen="connect">Find out</a>
         <span class="tiny">Three permissions, then Akeso does the rest.</span>
       </div>
