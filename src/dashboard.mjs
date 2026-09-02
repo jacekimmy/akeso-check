@@ -99,9 +99,10 @@ const CSS = `
   table { width:100%; border-collapse:collapse; font-size:13.5px; }
   th { text-align:left; font-weight:500; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); padding:8px 10px 8px 0; border-bottom:1px solid var(--rule2); }
   td { padding:10px 10px 10px 0; border-bottom:1px solid var(--rule); vertical-align:top; }
-  td.num, th.num { text-align:right; padding-right:0; }
+  td.num, th.num { text-align:right; padding-right:0; white-space:nowrap; }
+  td.num:not(:last-child), th.num:not(:last-child) { padding-right:22px; }
   tr.agree td { color:var(--ink2); }
-  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--rule2); background:var(--card); }
+  .pill { display:inline-block; white-space:nowrap; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--rule2); background:var(--card); }
   .pill.ok { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 40%, var(--rule2)); }
   .pill.bad { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 40%, var(--rule2)); }
   .pill.wait { color:var(--wait); border-color:color-mix(in srgb, var(--wait) 40%, var(--rule2)); }
@@ -205,11 +206,11 @@ const JS = String.raw`
   var step;
   if (!check) step = { h: "Nothing has been checked yet.", w: "Akeso needs to look at your code before it can say anything about it.", c: "npx akeso-check" };
   else if (!ranLive) step = { h: "Next: the real test, where a pretend customer pays and cancels.", w: "Reading code shows what your app is supposed to do. Only running it shows what it actually does.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
-  else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "The repair is in, but the test still fails.", w: "Akeso will not call a repair successful when its own test disagrees.", c: "npx akeso-check fix --show" } : { h: "Next: repair what the " + grade + " is about.", w: "Akeso writes the corrected webhook handler and the one file that touches your database, then you re-run this test to prove it.", c: "npx akeso-check fix" };
+  else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "The repair is in, but the test still fails.", w: "Akeso will not call a repair successful when its own test disagrees.", c: "npx akeso-check fix --show" } : { h: "Next: repair what the " + grade + " is about.", w: "It writes the corrected webhook handler and the one file that touches your database. Re-run the test to prove it.", c: "npx akeso-check fix" };
   else if (grade === "?") step = { h: "The run itself had problems, so there is no verdict yet.", w: "This is about the run, not about your app.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
   else if (sweep && sweep.couldNotRun) step = { h: "The last check of your real customers could not run.", w: String(sweep.couldNotRun), c: "npx akeso-check monitor" };
   else if (sweep && matched === 0) step = { h: "Nothing could be compared yet, so nothing is proven about your customers.", w: "No Stripe subscription matched any account your app reported. Stripe has to carry the same account id your app uses.", c: null };
-  else if (sweep && waiting.length) step = { h: waiting.length + " removal" + (waiting.length === 1 ? " is" : "s are") + " waiting for your yes.", w: "Akeso restores access on its own, but it never takes access away without a person deciding. Nothing has happened to those accounts.", c: "npx akeso-check approvals" };
+  else if (sweep && waiting.length) step = { h: waiting.length + " removal" + (waiting.length === 1 ? " is" : "s are") + " waiting for your yes.", w: "Akeso never takes access away without a person deciding. Nothing has happened to those accounts yet.", c: "npx akeso-check approvals" };
   else if (sweep) step = sweep.comparison && sweep.comparison.clean ? { h: "Everything matches right now.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement" } : { h: "The last run found accounts that do not match.", w: "The table below names them.", c: "npx akeso-check approvals" };
   else step = { h: provenFix ? "The repair holds. Next: check that today's real customers match." : "Your billing code passes. Next: check that today's real customers match.", w: "Correct code from now on does not fix the accounts that already drifted.", c: "npx akeso-check monitor" };
 
@@ -229,7 +230,7 @@ const JS = String.raw`
   function appPill(a) { return a.app == null ? '<span class="pill none">unknown</span>' : a.app ? '<span class="pill ok">has access</span>' : '<span class="pill bad">no access</span>'; }
   function meaning(a) { return { locked_out: "paying, but locked out. Akeso restores this.", still_entitled: "not paying, still has access. Waits for your yes.", no_conclusion: "mid-flight; no verdict drawn.", no_subscription: "no Stripe subscription; reported, never acted on." }[a.verdict] || ""; }
 
-  var rows = accounts.map(function (a) { return "<tr><td class=mono>" + esc(a.account) + "</td><td>" + stripePill(a) + "</td><td>" + tie(a) + "</td><td>" + appPill(a) + "</td><td>" + esc(meaning(a)) + "</td><td class=num class=mono>" + esc(money(a.priceMonthly)) + "</td></tr>"; }).join("");
+  var rows = accounts.map(function (a) { return "<tr><td class=mono>" + esc(a.account) + "</td><td>" + stripePill(a) + "</td><td>" + tie(a) + "</td><td>" + appPill(a) + "</td><td>" + esc(meaning(a)) + "</td><td class='num mono'>" + esc(money(a.priceMonthly)) + "</td></tr>"; }).join("");
   if (sweep && matched > 0 && agreeing > 0) rows += '<tr class="agree"><td class="mono">' + agreeing + ' more</td><td><span class="pill ok">paying</span></td><td><span class="tie ok">=</span></td><td><span class="pill ok">has access</span></td><td>agree. Nothing to do.</td><td></td></tr>';
   $("accounts").innerHTML = rows || '<tr><td colspan="6" class="empty">' + (sweep ? "Nothing could be compared on the last sweep." : "No sweep has run yet. The monitor fills this in.") + "</td></tr>";
   $("accountsN").textContent = sweep ? (matched + " compared, " + accounts.filter(function (a) { return a.verdict === "locked_out" || a.verdict === "still_entitled"; }).length + " disagree") : "";
@@ -252,7 +253,7 @@ const JS = String.raw`
 
   /* monitor view */
   var sw = kinds("sweep");
-  $("sweeps").innerHTML = sw.length ? sw.slice().reverse().map(function (e) { var c = e.comparison || {}; return "<tr><td class=mono>" + esc(when(e.at)) + "</td><td>" + (e.couldNotRun ? '<span class="pill bad">could not run</span>' : c.comparable === false ? '<span class="pill none">compared nothing</span>' : c.clean ? '<span class="pill ok">all matching</span>' : '<span class="pill bad">mismatches</span>') + "</td><td class=num class=mono>" + esc(c.counts ? c.counts.matched : "") + "</td><td class=num class=mono>" + esc(typeof c.monthlyExposure === "number" ? money(c.monthlyExposure) : "") + "</td></tr>"; }).join("") : '<tr><td colspan="4" class="empty">No sweep has run yet.</td></tr>';
+  $("sweeps").innerHTML = sw.length ? sw.slice().reverse().map(function (e) { var c = e.comparison || {}; return "<tr><td class=mono>" + esc(when(e.at)) + "</td><td>" + (e.couldNotRun ? '<span class="pill bad">could not run</span>' : c.comparable === false ? '<span class="pill none">compared nothing</span>' : c.clean ? '<span class="pill ok">all matching</span>' : '<span class="pill bad">mismatches</span>') + "</td><td class='num mono'>" + esc(c.counts ? c.counts.matched : "") + "</td><td class='num mono'>" + esc(typeof c.monthlyExposure === "number" ? money(c.monthlyExposure) : "") + "</td></tr>"; }).join("") : '<tr><td colspan="4" class="empty">No sweep has run yet.</td></tr>';
   $("coverage").textContent = covered ? "Covered since " + when(cert.at) + " under rule version " + esc((cert.policy && cert.policy.ruleVersion) || "1") + "." : "Not covering this app yet. Coverage starts when you confirm the rules: npx akeso-check certify";
 
   /* approvals view */
@@ -309,7 +310,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
     : "";
 
   const runPanel = hosted ? `
-  <div class="demo">${demo ? `<b>This is a demo ledger.</b> Every number on it came from a real run on a test app. To see your own app here:` : `<b>Your ledger.</b>`} <button class="btn primary" id="runBtn">Run on your app</button> <label class="btn">Load .akeso/ledger.jsonl<input type="file" id="ledgerFile" accept=".jsonl,application/json,text/plain"></label> <span>Nothing is uploaded. This page reads the file in your browser.</span></div>
+  <div class="demo">${demo ? `<b>Demo ledger</b> from a real run on a test app.` : `<b>Your ledger.</b>`} <button class="btn primary" id="runBtn">Run on your app</button> <label class="btn">Load your ledger<input type="file" id="ledgerFile" accept=".jsonl,application/json,text/plain"></label> <span class="note" style="margin:0">Nothing is uploaded; the file is read in this tab.</span></div>
   <div class="panel" id="runPanel">
     <div class="tabs" id="tabs"><button class="on" data-tool="terminal">Terminal</button><button data-tool="claude">Claude Code</button><button data-tool="cursor">Cursor</button><button data-tool="codex">Codex</button><button data-tool="lovable">Lovable / Bolt / v0</button></div>
     <ol id="steps" hidden>
@@ -345,7 +346,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="cols">
         <div>
           <div class="h"><h2>Accounts</h2><span class="n" id="accountsN"></span><span class="r mono" id="accountsWhen"></span></div>
-          <table><thead><tr><th>Account</th><th>Stripe says</th><th></th><th>App says</th><th>Meaning</th><th class="num">List</th></tr></thead><tbody id="accounts"></tbody></table>
+          <table><thead><tr><th>Account</th><th>Stripe says</th><th></th><th>App says</th><th>Meaning</th><th class="num">List price</th></tr></thead><tbody id="accounts"></tbody></table>
         </div>
         <aside class="inbox">
           <div class="h"><h2>Waiting for you</h2></div>
@@ -381,7 +382,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
 
     <section class="view" id="v-approvals">
       <div class="h"><h2>Removals waiting for your yes</h2></div>
-      <table><thead><tr><th>Account</th><th>Why</th><th class="num">List</th><th>State</th><th>Decide</th></tr></thead><tbody id="queue"></tbody></table>
+      <table><thead><tr><th>Account</th><th>Why</th><th class="num">List price</th><th>State</th><th>Decide</th></tr></thead><tbody id="queue"></tbody></table>
       <p class="rule-line">Akeso never removes access on its own. Nothing above has happened.</p>
     </section>
 

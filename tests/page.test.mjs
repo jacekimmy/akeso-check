@@ -72,3 +72,11 @@ test("the views a founder needs all exist, as navigation", () => {
   }
   assert.ok(html.includes("Stripe says") && html.includes("App says"), "the truth table is the centrepiece");
 });
+
+test("the inline script parses, so a bad quote cannot blank the whole page", async () => {
+  const vm = await import("node:vm");
+  const html = renderDashboard({ ledger: [], appName: "x", hosted: true, demo: true });
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.equal(scripts.length, 2);
+  for (const src of scripts) new vm.Script(src);
+});
