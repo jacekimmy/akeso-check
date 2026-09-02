@@ -41,7 +41,7 @@ const CSS = `
   @media (prefers-color-scheme: dark) { :root {
     --bg:#0f1114; --card:#16181c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --line:#262a30; --tint:#1c1f24;
     --ok:#3ccf8e; --okSoft:#123b2c; --bad:#ff6b6f; --badSoft:#4a1e21; --wait:#f0b13c; --waitSoft:#4a3413; --none:#3a3f47; --link:#3ccf8e;
-    --frame:#000;
+    --frame:#141619;
   } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 Geist, "Geist Fallback", -apple-system, "SF Pro Text", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
@@ -64,22 +64,24 @@ const CSS = `
   .wrap { max-width:1080px; margin:0 auto; padding:0 32px; }
 
   /* ---------- lock screen ---------- */
-  #lock { min-height:100vh; display:flex; flex-direction:column; }
+  #lock { height:100vh; height:100dvh; display:flex; flex-direction:column; position:relative; overflow:hidden; }
+  #lock canvas.field { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  #lock .top, #lock .body { position:relative; }
   #lock .top { display:flex; align-items:center; justify-content:space-between; padding:22px 24px; font-size:13px; color:var(--ink2); }
   #lock .top .acts a { margin-left:22px; }
   .brand { font-weight:600; font-size:15px; color:var(--ink); display:inline-flex; align-items:center; gap:9px; }
   .brand i { width:10px; height:10px; border-radius:50%; background:var(--ok); display:inline-block; }
-  #lock .body { flex:1; display:flex; flex-direction:column; align-items:center; text-align:center; padding:72px 24px 64px; }
+  #lock .body { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 24px 24px; gap:0; }
   .rotator { display:grid; width:100%; max-width:880px; }
-  .rotator h1 { grid-area:1 / 1; margin:0; font-size:56px; line-height:1.05; font-weight:600; letter-spacing:-.04em; text-wrap:balance; opacity:0; transition:opacity 900ms ease; }
+  .rotator h1 { grid-area:1 / 1; margin:0; font-size:clamp(34px, 3.6vw, 52px); line-height:1.05; font-weight:600; letter-spacing:-.04em; text-wrap:balance; opacity:0; transition:opacity 900ms ease; }
   .rotator h1.on { opacity:1; }
-  .frame { margin-top:40px; width:min(960px, 100%); aspect-ratio:96 / 52; background:var(--frame); border-radius:12px; border:1px solid rgba(255,255,255,.08); box-shadow:0 30px 80px -30px rgba(10,12,14,.45), inset 0 1px 0 rgba(255,255,255,.04); overflow:hidden; position:relative; opacity:0; transform:translateY(16px); transition:opacity .6s ease-out, transform .6s ease-out; }
+  .frame { margin-top:28px; height:min(50vh, 470px); aspect-ratio:96 / 47; max-width:100%; width:auto; background:var(--frame); border-radius:12px; border:1px solid rgba(255,255,255,.08); box-shadow:0 30px 80px -30px rgba(10,12,14,.45), inset 0 1px 0 rgba(255,255,255,.04); overflow:hidden; position:relative; opacity:0; transform:translateY(16px); transition:opacity .6s ease-out, transform .6s ease-out; }
   .frame.in { opacity:1; transform:none; }
-  .frame .inner { position:absolute; inset:0; padding:44px 52px; color:#f2f2ee; text-align:left; --card:#131518; --line:#24272c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --bg:#0b0c0e; --tint:#1a1d22; --okSoft:#123b2c; --waitSoft:#4a3413; --none:#3a3f47; }
+  .frame .inner { position:absolute; left:0; top:0; width:960px; height:470px; transform-origin:0 0; transform:scale(var(--s, 1)); padding:44px 52px; color:#f2f2ee; text-align:left; --card:#131518; --line:#24272c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --bg:#0b0c0e; --tint:#1a1d22; --okSoft:#123b2c; --waitSoft:#4a3413; --none:#3a3f47; }
   .frame .inner .status { margin:0; }
   .frame .inner .loop { margin-top:36px; }
-  #lock .btn.big { margin-top:36px; }
-  #lock .tiny { margin-top:18px; font-size:13px; color:var(--ink2); }
+  #lock .btn.big { margin-top:24px; }
+  #lock .tiny { margin-top:14px; font-size:13px; color:var(--ink2); }
 
   /* ---------- connect ---------- */
   #connect, #paste { padding:88px 0 96px; }
@@ -236,8 +238,8 @@ const CSS = `
   @media (max-width:1100px) { .layout { grid-template-columns:1fr; } .index { display:none; } }
   @media (max-width:720px) {
     .wrap { padding:0 20px; }
-    #lock .body { padding:40px 20px 120px; } .rotator h1 { font-size:34px; }
-    .frame { aspect-ratio:auto; } .frame .inner { position:relative; padding:24px; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:20px; } .frame .inner .ring { width:120px; height:120px; margin:0 auto; } .frame .inner .ring .center { font-size:34px; }
+    #lock .body { padding:0 20px 100px; justify-content:flex-start; padding-top:24px; } .rotator h1 { font-size:32px; }
+    .frame { height:auto; aspect-ratio:auto; width:100%; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:22px; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
     .arow { display:grid; grid-template-columns:36px 1fr auto; row-gap:6px; } .arow .st { grid-column:2 / -1; } .arow .dis { grid-column:2 / -1; text-align:left; }
     #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; }
     h1.big { font-size:32px; } .verdict { font-size:30px; }
@@ -537,8 +539,41 @@ const JS = String.raw`
     if (t) { var P = "Run npx akeso-check here, follow its next steps, and explain the report to me in plain English."; var T = { terminal: { paste: "npx akeso-check" }, claude: { paste: P }, cursor: { paste: P }, codex: { paste: P }, lovable: { paste: "npx akeso-check", steps: true } }; document.querySelectorAll("[data-tool]").forEach(function (x) { x.setAttribute("aria-selected", String(x === t)); }); $("cmd").textContent = T[t.dataset.tool].paste; $("cmdCopy").dataset.copy = T[t.dataset.tool].paste; $("how").hidden = !T[t.dataset.tool].steps; }
   });
 
+  /* the frame keeps a 960x520 layout and scales to whatever size it got */
+  function fitFrame() { var fr = $("frame"), inner = $("frameInner"); if (!fr || !inner || fr.offsetWidth === 0 || window.innerWidth <= 720) { if (inner) inner.style.removeProperty("--s"); return; } inner.style.setProperty("--s", String(fr.clientWidth / 960)); }
+  window.addEventListener("resize", fitFrame); setTimeout(fitFrame, 0); setTimeout(fitFrame, 300);
+
+  /* the field: one dot per customer, a slow wave turning them green */
+  (function () {
+    var c = $("field"); if (!c || !c.getContext) return;
+    var ctx = c.getContext("2d"), still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var dark = matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
+    var GAP = 28, R = 1.6, t0 = performance.now();
+    function size() { var d = Math.min(2, window.devicePixelRatio || 1); if (!c.clientWidth) return; if (c.width !== Math.round(c.clientWidth * d) || c.height !== Math.round(c.clientHeight * d)) { c.width = Math.round(c.clientWidth * d); c.height = Math.round(c.clientHeight * d); ctx.setTransform(d, 0, 0, d, 0, 0); } }
+    window.addEventListener("resize", size);
+    function hash(x, y) { var h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967295; }
+    function draw(now) {
+      size(); var t = (now - t0) / 1000, w = c.clientWidth, h = c.clientHeight, cx = w / 2, cy = h / 2;
+      if (!w) { requestAnimationFrame(draw); return; }
+      ctx.clearRect(0, 0, w, h);
+      for (var y = GAP / 2; y < h; y += GAP) for (var x = GAP / 2; x < w; x += GAP) {
+        var dx = (x - cx) / w, dy = (y - cy) / h, dist = Math.sqrt(dx * dx + dy * dy);
+        var wave = 0.5 + 0.5 * Math.sin(x * 0.011 - t * 0.55 + Math.sin(y * 0.009 + t * 0.25) * 1.6);
+        var g = Math.pow(wave, 3);
+        var edge = Math.min(1, Math.max(0, (dist - 0.18) / 0.32));
+        var a = (0.08 + 0.42 * g) * edge;
+        var hz = hash(x, y);
+        var amber = hz > 0.997 && ((t * 0.5 + hz * 40) % 9) < 0.8;
+        ctx.fillStyle = amber ? "rgba(224,150,26," + (0.9 * edge) + ")" : dark ? "rgba(60,207,142," + a + ")" : "rgba(30,154,106," + a + ")";
+        ctx.beginPath(); ctx.arc(x, y, R + g * 0.9, 0, 6.2832); ctx.fill();
+      }
+      if (!still) requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+  })();
+
   /* the lock screen's two lines, cross-fading */
-  (function () { var hs = document.querySelectorAll(".rotator h1"); if (hs.length < 2) return; var i = 0; setInterval(function () { hs[i].classList.remove("on"); i = (i + 1) % hs.length; hs[i].classList.add("on"); }, 4000); })();
+  (function () { var hs = document.querySelectorAll(".rotator h1"); if (hs.length < 2) return; var i = 0; setInterval(function () { hs[i].classList.remove("on"); i = (i + 1) % hs.length; hs[i].classList.add("on"); }, 3000); })();
 
   /* section index */
   (function () { var links = document.querySelectorAll(".index a"); if (!links.length || !window.IntersectionObserver) return; var io = new IntersectionObserver(function (es) { es.forEach(function (en) { if (en.isIntersecting) links.forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + en.target.id); }); }); }, { rootMargin: "-30% 0px -60% 0px" }); document.querySelectorAll(".sections section[id]").forEach(function (s) { io.observe(s); }); })();
@@ -563,6 +598,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
 
   const onboarding = hosted ? `
     <section id="lock" hidden>
+      <canvas class="field" id="field" aria-hidden="true"></canvas>
       <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
       <div class="body">
         <div class="rotator" aria-live="off"><h1 class="on">Did your customers get what they paid for?</h1><h1>Do your canceled customers still have access?</h1></div>
