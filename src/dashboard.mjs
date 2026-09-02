@@ -201,7 +201,7 @@ const CSS = `
   .conn .d { font-size:15px; color:var(--ink2); }
   .conn .fill { flex:1; }
   .conn .cs { font-size:14px; color:var(--ink2); display:flex; align-items:center; gap:8px; }
-  .conn .cs i { width:9px; height:9px; border-radius:50%; background:var(--none); display:inline-block; } .conn .cs i.ok { background:var(--ok); }
+  .conn .cs i { width:9px; height:9px; border-radius:50%; background:var(--none); display:inline-block; } .conn .cs i.ok { background:var(--ok); } .conn .cs i.wait { background:var(--wait); }
   .alt { margin-top:44px; font-size:15px; color:var(--ink2); }
 
   /* onboarding */
@@ -259,7 +259,7 @@ const JS = String.raw`
     var status = $("status"); if (status) { status.textContent = D.demo ? "Demo" : (D.fileName || ""); status.className = "status"; status.title = D.demo ? "A real run on a test app. Load your own ledger to replace it." : "Read in this tab. Never uploaded."; }
     var demoLink = $("demoLink"); if (demoLink) demoLink.hidden = !onboarding || screen === "lock";
     var loadLink = $("loadLink"); if (loadLink) loadLink.hidden = screen === "lock";
-    var conns = D.connections || {}; document.querySelectorAll("[data-conn]").forEach(function (c) { var on = !!conns[c.dataset.conn]; c.querySelector(".cs").innerHTML = '<i class="' + (on ? "ok" : "") + '"></i>' + (on ? "Connected" : "Not connected"); });
+    var conns = D.connections || {}; var n = 0; document.querySelectorAll("[data-conn]").forEach(function (c) { var v = conns[c.dataset.conn]; var word = v === "preview" ? "Connected (preview)" : v === "waiting" ? "Waiting for you in the window" : v ? "Connected" : "Not connected"; var cls = v === "preview" || v === "waiting" ? "wait" : v ? "ok" : ""; if (v && v !== "waiting") n++; c.querySelector(".cs").innerHTML = '<i class="' + cls + '"></i>' + word; var b = c.querySelector("[data-connect]"); if (b) b.textContent = v && v !== "waiting" ? "Reconnect" : "Connect"; }); var ac = $("afterConnect"); if (ac) ac.hidden = n < 3;
     var backLink = $("backLink"); if (backLink) backLink.hidden = onboarding;
     if (onboarding) { $("seal").textContent = "Nothing checked yet"; $("seal").className = "seal none"; $("seal").hidden = screen === "lock"; document.title = "Akeso"; return; }
     $("seal").hidden = false;
@@ -456,6 +456,15 @@ const JS = String.raw`
     }
     if (e.target.id === "demoLink") { e.preventDefault(); var D = window.AKESO || {}; window.AKESO = Object.assign({}, D, { ledger: D.demoLedger || [], appName: D.demoName || "Demo app", demo: true, onboarding: false, fileName: "" }); render(); window.scrollTo(0, 0); return; }
     if (e.target.id === "backLink") { e.preventDefault(); var D2 = window.AKESO || {}; window.AKESO = Object.assign({}, D2, { ledger: [], demo: false, onboarding: true, screen: "connect", fileName: "" }); render(); window.scrollTo(0, 0); return; }
+    var cb = e.target.closest("[data-connect]");
+    if (cb) {
+      e.preventDefault(); var prov = cb.dataset.connect;
+      var w = 520, h = 720, left = Math.max(0, (screen.width - w) / 2), top = Math.max(0, (screen.height - h) / 2);
+      var win = window.open(cb.getAttribute("href"), "akeso-connect", "popup=yes,width=" + w + ",height=" + h + ",left=" + left + ",top=" + top);
+      if (!win) { location.href = cb.getAttribute("href"); return; }
+      window.AKESO = Object.assign({}, window.AKESO || {}, { connections: Object.assign({}, (window.AKESO || {}).connections || {}, (function () { var o = {}; o[prov] = "waiting"; return o; })()) }); render();
+      return;
+    }
     var go = e.target.closest("[data-screen]"); if (go) { e.preventDefault(); window.AKESO = Object.assign({}, window.AKESO || {}, { onboarding: true, screen: go.dataset.screen }); render(); window.scrollTo(0, 0); return; }
     var t = e.target.closest("[data-tool]");
     if (t) {
@@ -465,9 +474,12 @@ const JS = String.raw`
       $("cmd").textContent = T[t.dataset.tool].paste; $("cmdCopy").dataset.copy = T[t.dataset.tool].paste; $("how").hidden = !T[t.dataset.tool].steps;
     }
   });
+  function refreshConnections() { if (!(window.AKESO && window.AKESO.hosted && window.fetch)) return; fetch("/api/connections", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && typeof j === "object") { var cur = (window.AKESO || {}).connections || {}; Object.keys(cur).forEach(function (k) { if (cur[k] === "waiting" && !j[k]) j[k] = "waiting"; }); window.AKESO.connections = j; if (window.AKESO.onboarding) render(); } }).catch(function () {}); }
+  window.addEventListener("message", function (e) { if (e.origin !== location.origin || !e.data || e.data.akeso !== "connected") return; var c = Object.assign({}, (window.AKESO || {}).connections || {}); c[e.data.provider] = e.data.preview ? "preview" : true; window.AKESO.connections = c; render(); refreshConnections(); });
+  window.addEventListener("focus", refreshConnections);
   if (window.AKESO && window.AKESO.onboarding && /^#(connect|paste)$/.test(location.hash)) window.AKESO.screen = location.hash.slice(1);
   render();
-  if (window.AKESO && window.AKESO.hosted && window.fetch) fetch("/api/connections", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && typeof j === "object") { window.AKESO.connections = j; if (window.AKESO.onboarding) render(); } }).catch(function () {});
+  refreshConnections();
 })();
 `;
 
@@ -494,12 +506,13 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
     <section id="connect" hidden>
       <p class="eyebrow">Step 1 of 2</p>
       <h1>Connect what Akeso needs.</h1>
-      <p class="lead">You say yes on each company's own page. Akeso only reads. You can disconnect any of them at any time.</p>
+      <p class="lead">Click one. A small window opens. Press Grant. That is all.</p>
       <div class="conn">
-        <div class="card" data-conn="stripe"><div class="glyph">${CARD}</div><div class="t">Stripe</div><div class="d">Where you get paid.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=stripe">Connect Stripe</a></div>
-        <div class="card" data-conn="github"><div class="glyph">${BRANCH}</div><div class="t">Your code</div><div class="d">Where your app lives, on GitHub.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=github">Connect GitHub</a></div>
-        <div class="card" data-conn="supabase"><div class="glyph">${DB}</div><div class="t">Your customers</div><div class="d">Where their accounts are stored, on Supabase.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=supabase">Connect Supabase</a></div>
+        <div class="card" data-conn="stripe"><div class="glyph">${CARD}</div><div class="t">Stripe</div><div class="d">Where you get paid.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=stripe" data-connect="stripe">Connect</a></div>
+        <div class="card" data-conn="github"><div class="glyph">${BRANCH}</div><div class="t">Your code</div><div class="d">Where your app lives, on GitHub.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=github" data-connect="github">Connect</a></div>
+        <div class="card" data-conn="supabase"><div class="glyph">${DB}</div><div class="t">Your customers</div><div class="d">Where their accounts are stored, on Supabase.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=supabase" data-connect="supabase">Connect</a></div>
       </div>
+      <div id="afterConnect" hidden class="card" style="margin-top:24px"><div class="t" style="font-size:22px;font-weight:700;letter-spacing:-.02em">Step 2 of 2: Akeso checks your app.</div><div class="d" style="color:var(--ink2);margin-top:6px">Coming next. Until then, the one-command check works today.</div></div>
       <p class="alt">Prefer to keep everything on your own computer? <a href="#" class="link" data-screen="paste">Run it yourself with one command.</a></p>
     </section>
     <section id="paste" hidden>
