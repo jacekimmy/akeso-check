@@ -300,7 +300,7 @@ const JS = String.raw`
     var sweepRows = sw.length ? sw.slice().reverse().map(function (e) { var c = e.comparison || {}; return row("", e.couldNotRun ? "bad" : c.comparable === false ? "" : c.clean ? "ok" : "wait", esc(when(e.at)), null, e.couldNotRun ? "Could not run" : c.comparable === false ? "Nothing to compare" : (c.counts ? c.counts.matched + " compared · " : "") + (c.clean ? "all agree" : money(Number(c.monthlyExposure) || 0) + "/mo unpaid")); }).join("") : empty("No sweep has run yet.");
 
     $("details").innerHTML =
-      disclosure("d-check", circle.check, "Ten situations", ranLive ? "Grade " + esc(grade) + (passing ? " · " + passed + " passed" + (notGraded ? ", " + notGraded + " not graded" : "") : " · " + failed + " fail") : (check ? "Read, not run" : "Not run"), check ? esc(when(check.at)) : "", scenarioRows) +
+      disclosure("d-check", circle.check, "Ten situations", ranLive ? (grade === "?" ? "No grade" : "Grade " + esc(grade) + (passing ? " · " + passed + " passed" + (notGraded ? ", " + notGraded + " not graded" : "") : " · " + failed + " fail")) : (check ? "Read, not run" : "Not run"), check ? esc(when(check.at)) : "", scenarioRows) +
       disclosure("d-fix", circle.fix, "Files written", provenFix ? "Re-test passed" : (fix && !passing) ? "Re-test failed. Not counted as fixed." : fix ? "Not yet re-tested" : states.fix === "notneeded" ? "Nothing needed fixing" : "No fix yet", fix ? esc(when(fix.at)) : "", fileRows) +
       disclosure("d-monitor", circle.monitor, "Accounts, last sweep", sweep ? (matched + " compared" + (stillWrong.length ? " · " + plural(stillWrong.length, "disagrees", "disagree") : "")) : "No sweep yet", sweep ? esc(when(sweep.at)) : "", table + sweepRows);
 
