@@ -1,6 +1,6 @@
 {
   "name": "akeso-check",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Prove whether your app grants and revokes paid access correctly. Runs on your machine; nothing leaves it.",
   "type": "module",
   "bin": {
