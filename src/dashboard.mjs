@@ -294,15 +294,15 @@ const JS = String.raw`
 
     /* ---- the next step, the same ladder as the terminal ---- */
     var step;
-    if (!check) step = { h: "Not checked yet.", w: "Run the Check in your project. It reads the code first, then runs a pretend customer through ten billing situations.", c: "npx akeso-check", m: DASH, tone: "", arc: 0, sub: "not run" };
-    else if (!ranLive) step = { h: "Code read. Not yet run.", w: "Only the live Check, where a pretend customer pays and cancels against your running app, produces a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: DASH, tone: "", arc: 0.15, sub: "read only" };
-    else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "Fix applied. The Check still fails.", w: "A fix counts only when the Check passes afterwards.", c: "npx akeso-check fix --show", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" } : { h: "Grade " + grade + ". " + failed + " of " + scenarios.length + " situations fail.", w: "Fix rewrites the webhook handler and the one file that touches your database, with backups, then proves it by running the same test again.", c: "npx akeso-check fix", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" };
-    else if (grade === "?") step = { h: "The Check could not finish. No grade.", w: "The run failed, not your app. Start the app and run it again.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: "?", tone: "", arc: 0, sub: "no grade" };
+    if (!check) step = { h: "Not checked yet.", w: "", c: "npx akeso-check", m: DASH, tone: "", arc: 0, sub: "not run" };
+    else if (!ranLive) step = { h: "Code read. Not yet run.", w: "Run it against your running app to get a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: DASH, tone: "", arc: 0.15, sub: "read only" };
+    else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "Fix applied. The Check still fails.", w: "", c: "npx akeso-check fix --show", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" } : { h: "Grade " + grade + ". " + failed + " of " + scenarios.length + " situations fail.", w: "", c: "npx akeso-check fix", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" };
+    else if (grade === "?") step = { h: "The Check could not finish. No grade.", w: "Start the app and run it again.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: "?", tone: "", arc: 0, sub: "no grade" };
     else if (sweep && sweep.couldNotRun) step = { h: "The last sweep could not run.", w: String(sweep.couldNotRun).replace(/\s+/g, " ").slice(0, 160), c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "no verdict" };
-    else if (sweep && matched === 0) step = { h: "No account could be compared.", w: "Stripe and your app use different customer ids, so nothing lines up. Pass your account id to Stripe as client_reference_id at checkout, then sweep again.", c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "0 compared" };
-    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your approval.", w: "Akeso never takes access away on its own. Everything else on this page is already handled.", c: "npx akeso-check approvals", m: String(waiting.length), tone: "wait", arc: 1, sub: "waiting" };
-    else if (sweep) step = stillWrong.length === 0 ? { h: "Stripe and your app agree.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement", m: CHECK, tone: "ok", arc: 1, sub: matched + " agree" } : { h: plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.", w: "", c: "npx akeso-check monitor", m: String(stillWrong.length), tone: "wait", arc: agreeing / Math.max(1, matched), sub: "of " + matched };
-    else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Accounts that drifted before the fix are still wrong. Monitor compares today's real customers with Stripe.", c: "npx akeso-check monitor", m: esc(grade), tone: "ok", arc: 1, sub: "grade" };
+    else if (sweep && matched === 0) step = { h: "No account could be compared.", w: "Stripe and your app use different customer ids. Pass your account id as client_reference_id at checkout.", c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "0 compared" };
+    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your approval.", w: "", c: "npx akeso-check approvals", m: String(waiting.length), tone: "wait", arc: 1, sub: "waiting" };
+    else if (sweep) step = stillWrong.length === 0 ? { h: "Stripe and your app agree.", w: "", c: "npx akeso-check statement", m: CHECK, tone: "ok", arc: 1, sub: matched + " agree" } : { h: plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.", w: "", c: "npx akeso-check monitor", m: String(stillWrong.length), tone: "wait", arc: agreeing / Math.max(1, matched), sub: "of " + matched };
+    else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Now compare today's customers with Stripe.", c: "npx akeso-check monitor", m: esc(grade), tone: "ok", arc: 1, sub: "grade" };
 
     /* ---- render ---- */
     var app = D.appName || "Your app";
@@ -329,43 +329,43 @@ const JS = String.raw`
     noVerdict.forEach(function () { dotList.push("none"); }); notInStripe.forEach(function () { dotList.push("none"); });
     var dots = sweep && matched > 0 ? '<div><div class="dots">' + dotList.map(function (d) { return '<i class="' + d + '"></i>'; }).join("") + (agreeing > 160 ? '<i class="more">+' + (agreeing - 160) + "</i>" : "") + '</div><div class="legend"><span><i></i>' + (agreeing + fixedNow.length) + " agree</span>" + (stillWrong.length ? '<span><i class="wait"></i>' + stillWrong.length + " disagree</span>" : "") + (noVerdict.length + notInStripe.length ? '<span><i class="none"></i>' + (noVerdict.length + notInStripe.length) + " no verdict</span>" : "") + "</div></div>" : '<div class="dots">' + '<i class="none"></i>'.repeat(24) + "</div>";
     $("loop").innerHTML =
-      '<div class="card step"><div class="head">' + node("check", states.check) + '<div><div class="title">Check</div><div class="state">' + (ranLive ? (grade === "?" ? "No grade" : "Grade " + esc(grade) + " · " + passed + " of " + scenarios.length + " passed") : check ? "Code read, not run" : "Not run") + '</div></div></div><div class="vis">' + tiles + "</div>" + (scenarioList ? "<details><summary class=more>Ten situations</summary>" + scenarioList + "</details>" : '<div class="quiet" style="font-size:14px">' + (check ? "The live Check produces the grade." : "Ten billing situations, one tile each.") + "</div>") + "</div>" +
-      '<div class="card step"><div class="head">' + node("fix", states.fix) + '<div><div class="title">Fix</div><div class="state">' + (provenFix ? plural(files.length, "file", "files") + " · re-test passed" : (fix && !passing) ? "Applied · re-test failed" : fix ? "Applied · not re-tested" : states.fix === "notneeded" ? "Not needed" : states.fix === "next" ? "Next" : "Not yet") + '</div></div></div><div class="vis">' + chips + "</div>" + (fileList ? "<details><summary class=more>Files written</summary>" + fileList + "</details>" : '<div class="quiet" style="font-size:14px">Rewrites the webhook handler and the one file that touches your database, with backups.</div>') + "</div>" +
-      '<div class="card step"><div class="head">' + node("monitor", states.monitor) + '<div><div class="title">Monitor</div><div class="state">' + (states.monitor === "done" ? matched + " compared · " + (stillWrong.length ? plural(stillWrong.length, "disagrees", "disagree") : "all agree") : states.monitor === "failed" ? "Could not run" : states.monitor === "nothing" ? "Nothing to compare" : states.monitor === "next" ? "Next" : "Not yet") + '</div></div></div><div class="vis">' + dots + "</div>" + '<div class="quiet" style="font-size:14px">' + (sweep ? "One dot per account: Stripe and your app compared, " + esc(when(sweep.at)) + "." : "One dot per account: Stripe and your app compared.") + "</div></div>";
+      '<div class="card step"><div class="head">' + node("check", states.check) + '<div><div class="title">Check</div><div class="state">' + (ranLive ? (grade === "?" ? "No grade" : "Grade " + esc(grade) + " · " + passed + " of " + scenarios.length + " passed") : check ? "Code read, not run" : "Not run") + '</div></div></div><div class="vis">' + tiles + "</div>" + (scenarioList ? "<details><summary class=more>Ten situations</summary>" + scenarioList + "</details>" : "") + "</div>" +
+      '<div class="card step"><div class="head">' + node("fix", states.fix) + '<div><div class="title">Fix</div><div class="state">' + (provenFix ? plural(files.length, "file", "files") + " · re-test passed" : (fix && !passing) ? "Applied · re-test failed" : fix ? "Applied · not re-tested" : states.fix === "notneeded" ? "Not needed" : states.fix === "next" ? "Next" : "Not yet") + '</div></div></div><div class="vis">' + chips + "</div>" + (fileList ? "<details><summary class=more>Files</summary>" + fileList + "</details>" : "") + "</div>" +
+      '<div class="card step"><div class="head">' + node("monitor", states.monitor) + '<div><div class="title">Monitor</div><div class="state">' + (states.monitor === "done" ? matched + " compared · " + (stillWrong.length ? plural(stillWrong.length, "disagrees", "disagree") : "all agree") : states.monitor === "failed" ? "Could not run" : states.monitor === "nothing" ? "Nothing to compare" : states.monitor === "next" ? "Next" : "Not yet") + '</div></div></div><div class="vis">' + dots + "</div>" + "</div>";
 
     /* ---- what needs you, and where the two sides disagree ---- */
     $("inbox").innerHTML = waiting.length ? waiting.map(function (r) {
-      return '<div class="approval"><p class="big wait">' + esc(r.account) + '</p><p class="why">' + esc(r.reason || "") + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + " a month" : "") + " · " + (r.ready ? "ready to approve" : "held until " + esc(when(r.readyAt))) + "</p>" + cmd("npx akeso-check approvals --approve " + r.id) + "</div>";
-    }).join("") : '<p class="quiet">Nothing. Akeso never removes access on its own, so removals only ever appear here.</p>';
+      return '<div class="approval"><p class="big wait">' + esc(r.account) + '</p><p class="why">Canceled in Stripe, still has access' + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + "/mo" : "") + (r.ready ? "" : " · held until " + esc(when(r.readyAt))) + "</p>" + cmd("npx akeso-check approvals --approve " + r.id) + "</div>";
+    }).join("") : '<p class="quiet">Nothing waiting.</p>';
     function stripeWord(a) { return a.stripe == null ? "No subscription" : a.stripe === "incomplete_expired" ? "Expired" : cap(a.stripe); }
     function appWord(a) { return fixedSince(a) ? "Has access" : a.app == null ? "Unknown" : a.app ? "Has access" : "No access"; }
     function meaning(a) {
-      if (a.verdict === "locked_out") return fixedSince(a) ? "Restored by Akeso, confirmed." : "Paying, locked out. Not yet restored.";
-      if (a.verdict === "still_entitled") return queuedFor[a.account] ? "Not paying, still has access. Awaiting your approval." : "Not paying, still has access.";
-      if (a.verdict === "no_conclusion") return "Payment not finished. No verdict.";
-      return "Not in Stripe. Left alone.";
+      if (a.verdict === "locked_out") return fixedSince(a) ? "Restored" : "Locked out";
+      if (a.verdict === "still_entitled") return queuedFor[a.account] ? "Awaiting your approval" : "Still has access";
+      if (a.verdict === "no_conclusion") return "No verdict";
+      return "Left alone";
     }
     function toneFor(a) { return a.verdict === "locked_out" ? (fixedSince(a) ? "ok" : "bad") : a.verdict === "still_entitled" ? "wait" : "none"; }
     var shown = stillWrong.concat(fixedNow, noVerdict);
     $("compare").innerHTML = shown.length ? '<div class="compare">' + shown.map(function (a) {
       var t = toneFor(a); var price = money(a.priceMonthly);
       return '<div class="who"><span class="code">' + esc(a.account) + "</span><span>" + esc(meaning(a)) + (price ? " · " + price + "/mo" : "") + '</span></div><div class="side ' + (t === "ok" ? "ok" : t === "none" ? "" : t) + '"><small>Stripe says</small><b>' + esc(stripeWord(a)) + '</b></div><div class="tie ' + t + '" aria-hidden="true">' + (t === "ok" ? "=" : t === "none" ? "?" : "&ne;") + '</div><div class="side ' + (t === "ok" ? "ok" : t === "none" ? "" : t) + '"><small>App says</small><b>' + esc(appWord(a)) + "</b></div>";
-    }).join("") + "</div>" + (notInStripe.length ? '<p class="note">' + plural(notInStripe.length, "account has", "accounts have") + " access with no Stripe subscription. Reported, never touched.</p>" : "") : '<p class="quiet">' + (sweep && matched > 0 ? "Every compared account agrees." : sweep ? "Nothing could be compared on the last sweep." : "The first sweep fills this in.") + "</p>";
+    }).join("") + "</div>" + (notInStripe.length ? '<p class="note">' + notInStripe.length + " without a subscription, left alone.</p>" : "") : '<p class="quiet">' + (sweep && matched > 0 ? "All agree." : sweep ? "Nothing to compare." : "No sweep yet.") + "</p>";
     $("compareN").textContent = sweep && matched > 0 ? matched + " compared · " + esc(when(sweep.at)) : "";
 
     /* ---- receipts ---- */
     var unpaid = lastGood ? (Number(lastGood.comparison.monthlyExposure) || 0) : null;
     $("figures").innerHTML =
-      '<div class="card figure"><div class="n' + (restored.length ? " ok" : "") + '">' + restored.length + '</div><div class="l">Access restored</div><div class="s">' + (unconfirmed.length ? unconfirmed.length + " not yet confirmed" : restored.length ? "each confirmed by reading back" : "paying customers let back in") + "</div></div>" +
-      '<div class="card figure"><div class="n">' + removed.length + '</div><div class="l">Access removed</div><div class="s">only ever with your approval</div></div>' +
-      '<div class="card figure"><div class="n' + (unpaid > 0 ? " wait" : "") + '">' + (unpaid == null ? "–" : money(unpaid)) + '</div><div class="l">Unpaid access, per month</div><div class="s">' + (unpaid == null ? "no sweep yet" : "at list price, last sweep") + "</div></div>";
+      '<div class="card figure"><div class="n' + (restored.length ? " ok" : "") + '">' + restored.length + '</div><div class="l">Access restored</div>' + (unconfirmed.length ? '<div class="s">' + unconfirmed.length + " not yet confirmed</div>" : "") + "</div>" +
+      '<div class="card figure"><div class="n">' + removed.length + '</div><div class="l">Access removed</div></div>' +
+      '<div class="card figure"><div class="n' + (unpaid > 0 ? " wait" : "") + '">' + (unpaid == null ? "–" : money(unpaid)) + '</div><div class="l">Unpaid access, per month</div>' + (unpaid == null ? '<div class="s">no sweep yet</div>' : "") + "</div>";
 
     /* ---- the boundary ---- */
     var fw = check && (check.framework || (check.detection && check.detection.framework));
     $("bound").innerHTML =
-      '<div class="card z"><div class="glyph">' + LOCK + '</div><div class="t">Your machine</div><div class="d">Your code, your keys and this ledger stay here. Every command runs locally and nothing is uploaded.</div><div class="s"><i class="ok"></i>Nothing leaves</div></div>' +
-      '<div class="card z"><div class="glyph">' + EYE + '</div><div class="t">Stripe</div><div class="d">Read with a restricted, read-only key from your own env file. Akeso never writes to Stripe and never stores the key.</div><div class="s"><i class="' + (sweep && !sweep.couldNotRun ? "ok" : sweep ? "bad" : "") + '"></i>' + (sweep && !sweep.couldNotRun ? "Read-only, connected" : sweep ? "Last read failed" : "Read-only, not yet read") + "</div></div>" +
-      '<div class="card z"><div class="glyph">' + KEY + '</div><div class="t">Your app' + (fw ? ' <span style="font-weight:400;color:var(--ink3);font-size:14px">' + esc(cap(String(fw).replace(/-/g, " "))) + "</span>" : "") + '</div><div class="d">Two small endpoints, signed with a secret only you hold. Grants are automatic. Removals wait for you. Delete one file and Akeso can no longer write at all.</div><div class="s"><i class="' + (covered ? "ok" : fix ? "wait" : "") + '"></i>' + (covered ? "Rules confirmed, version " + esc((cert.policy && cert.policy.ruleVersion) || "1") : fix ? "Rules not confirmed yet: npx akeso-check certify" : "Not connected yet") + "</div></div>";
+      '<div class="card z"><div class="glyph">' + LOCK + '</div><div class="t">Your machine</div><div class="d">Code, keys and ledger stay here.</div><div class="s"><i class="ok"></i>Nothing leaves</div></div>' +
+      '<div class="card z"><div class="glyph">' + EYE + '</div><div class="t">Stripe</div><div class="d">Read-only key. Never written to, never stored.</div><div class="s"><i class="' + (sweep && !sweep.couldNotRun ? "ok" : sweep ? "bad" : "") + '"></i>' + (sweep && !sweep.couldNotRun ? "Connected" : sweep ? "Last read failed" : "Not yet read") + "</div></div>" +
+      '<div class="card z"><div class="glyph">' + KEY + '</div><div class="t">Your app' + (fw ? ' <span style="font-weight:400;color:var(--ink3);font-size:14px">' + esc(cap(String(fw).replace(/-/g, " "))) + "</span>" : "") + '</div><div class="d">Two signed endpoints. Delete one file to revoke.</div><div class="s"><i class="' + (covered ? "ok" : fix ? "wait" : "") + '"></i>' + (covered ? "Rules confirmed" : fix ? "Rules not confirmed" : "Not connected") + "</div></div>";
 
     /* ---- the ledger ---- */
     $("timeline").innerHTML = L.length ? L.slice().reverse().map(function (e) {
@@ -451,14 +451,14 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="hero">
         <div>
           <h1>Does your app give paid access to exactly the people paying for it?</h1>
-          <p class="lead">One command finds out. It reads your project, runs a pretend customer through ten billing situations against your running app, and grades what it finds. Nothing leaves your machine.</p>
+          <p class="lead">One command. Runs on your machine. Nothing leaves it.</p>
         </div>
         <div class="ring none" style="--arc:0"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="arc" cx="80" cy="80" r="70"/></svg><div class="center">?<small>not yet run</small></div></div>
       </div>
       <div class="steps3">
-        <div class="card"><div class="num">1</div><div class="t">Paste one command</div><div class="tabs" id="tabs" role="tablist"><button role="tab" aria-selected="true" data-tool="terminal">Terminal</button><button role="tab" aria-selected="false" data-tool="claude">Claude Code</button><button role="tab" aria-selected="false" data-tool="cursor">Cursor</button><button role="tab" aria-selected="false" data-tool="codex">Codex</button><button role="tab" aria-selected="false" data-tool="lovable">Lovable / Bolt / v0</button></div><ol class="how" id="how" hidden><li>Open your project in your builder.</li><li>Click GitHub (top right) and follow its steps to put your project on GitHub.</li><li>On github.com, open the repository, click the green Code button, then Codespaces, then Create codespace on main.</li><li>When the editor loads, click the terminal at the bottom, paste this, press Enter.</li></ol><div class="fill"></div><div class="cmd"><code id="cmd">npx akeso-check</code><button class="link" id="cmdCopy" data-copy="npx akeso-check">Copy</button></div><div class="d">Free. No dependencies. Plain JavaScript you can read first: <a class="link" href="https://github.com/jacekimmy/akeso-check">github.com/jacekimmy/akeso-check</a></div></div>
-        <div class="card"><div class="num">2</div><div class="t">Load the ledger it writes</div><div class="d">Every run appends to <span class="code">.akeso/ledger.jsonl</span> in your project: what was checked, what was fixed, what was proven, what was compared. It is read in this tab and never uploaded.</div><div class="fill"></div><label class="link">Load your ledger<input type="file" class="sr" accept=".jsonl,application/json,text/plain"></label></div>
-        <div class="card"><div class="num">3</div><div class="t">This page becomes your app's</div><div class="d">The grade, the fix and its proof, every account where Stripe and your app disagree, what is waiting for your approval, and the receipts. Every later command adds to it.</div><div class="fill"></div><a href="#" class="link" id="demoLink2" onclick="document.getElementById('demoLink').click();return false;">See it with a demo ledger</a></div>
+        <div class="card"><div class="num">1</div><div class="t">Paste one command</div><div class="tabs" id="tabs" role="tablist"><button role="tab" aria-selected="true" data-tool="terminal">Terminal</button><button role="tab" aria-selected="false" data-tool="claude">Claude Code</button><button role="tab" aria-selected="false" data-tool="cursor">Cursor</button><button role="tab" aria-selected="false" data-tool="codex">Codex</button><button role="tab" aria-selected="false" data-tool="lovable">Lovable / Bolt / v0</button></div><ol class="how" id="how" hidden><li>Put your project on GitHub (the GitHub button in your builder).</li><li>On github.com: Code, Codespaces, Create codespace.</li><li>In the terminal at the bottom, paste this and press Enter.</li></ol><div class="fill"></div><div class="cmd"><code id="cmd">npx akeso-check</code><button class="link" id="cmdCopy" data-copy="npx akeso-check">Copy</button></div><div class="d">Free and <a class="link" href="https://github.com/jacekimmy/akeso-check">open source</a>.</div></div>
+        <div class="card"><div class="num">2</div><div class="t">Load the ledger it writes</div><div class="d"><span class="code">.akeso/ledger.jsonl</span> in your project. Read in this tab, never uploaded.</div><div class="fill"></div><label class="link">Load your ledger<input type="file" class="sr" accept=".jsonl,application/json,text/plain"></label></div>
+        <div class="card"><div class="num">3</div><div class="t">This page becomes your app's</div><div class="d">Grade, fix, accounts, approvals, receipts.</div><div class="fill"></div><a href="#" class="link" id="demoLink2" onclick="document.getElementById('demoLink').click();return false;">See it with a demo ledger</a></div>
       </div>
     </section>` : "";
 
@@ -483,13 +483,13 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       </section>
 
       <section>
-        <h2>The loop<span class="r">Check finds it. Fix repairs and proves it. Monitor keeps it true.</span></h2>
+        <h2 class="sr">The loop</h2>
         <div class="loop" id="loop"></div>
       </section>
 
       <section>
         <div class="sides">
-          <div><h2>Where Stripe and your app disagree<span class="r" id="compareN"></span></h2><div class="card" id="compare"></div></div>
+          <div><h2>Accounts<span class="r" id="compareN"></span></h2><div class="card" id="compare"></div></div>
           <div><h2>Waiting for your approval</h2><div class="card" id="inbox"></div></div>
         </div>
       </section>
@@ -497,7 +497,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <section>
         <h2>Receipts</h2>
         <div class="figures" id="figures"></div>
-        <p class="note">Revenue recovered: not measured. Akeso does not see your payouts, so it will not invent a number.</p>
+        <p class="note">Revenue recovered: not measured.</p>
       </section>
 
       <section>
@@ -507,7 +507,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
 
       <section>
         <h2>Ledger<span class="r" id="ledgerWhere"></span><span class="seal none" id="seal2" style="margin-left:14px"></span></h2>
-        <div class="card"><div class="timeline" id="timeline"></div><p class="foot">Each entry is hashed with the one before it. This page recomputes every hash in your browser; an edited entry shows as not verified.</p></div>
+        <div class="card"><div class="timeline" id="timeline"></div></div>
       </section>
 
       <p class="doctrine">Akeso restores access on its own. It never removes access on its own.</p>
