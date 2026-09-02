@@ -28,7 +28,7 @@ test("the hosted copy has the run panel and the file loader, the local copy does
   const local = renderDashboard({ ledger: [], appName: "demo", hosted: false });
   assert.ok(hosted.includes('id="ledgerFile"') && hosted.includes('id="tabs"'));
   assert.ok(!local.includes('id="ledgerFile"') && !local.includes('id="tabs"'));
-  assert.match(hosted, /Nothing is uploaded/);
+  assert.match(hosted, /never uploaded/);
 });
 
 test("the ledger travels embedded, byte for byte", async () => {
@@ -60,7 +60,7 @@ test("a hostile ledger cannot break out of the script or the markup", async () =
 test("revenue recovered is never a figure, and the rule is on every copy", () => {
   const html = renderDashboard({ ledger: [restoreEntry({ account: "a", direction: "grant", result: "applied", verified: true, reasonCode: "x", idempotencyKey: "k" })], appName: "demo" });
   const at = html.indexOf("Revenue recovered");
-  assert.match(html.slice(at, at + 200), /not measured/);
+  assert.match(html.slice(at, at + 200), /not measured/i);
   assert.match(html, /never removes access on its own/);
 });
 

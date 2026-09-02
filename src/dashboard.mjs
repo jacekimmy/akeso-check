@@ -5,13 +5,13 @@
  * browser. Nothing is uploaded, so the privacy promise holds even for the
  * hosted copy.
  *
- * It is built around the founder's four questions, in the order they ask
- * them: is my billing right, which exact accounts are wrong, what is waiting
- * on me, what has Akeso done. The centrepiece is the one thing nobody else
- * shows them: every account with what Stripe says and what the app says side
- * by side, and whether the two agree. The three steps are the navigation
- * itself, each carrying its live state, so the connection between them is the
- * rail on the left rather than a diagram.
+ * The design rule is the one a hardware designer would apply: one surface,
+ * one typeface, one accent per state, and nothing on the screen that is not
+ * a name, a value, or an action. Structure comes from grouped lists with a
+ * small label above each, the way a phone's settings are laid out, because
+ * a founder already knows how to read that. The three steps of the loop are
+ * the first group, each row carrying its live state, so the connection
+ * between them is the first thing on the page rather than a diagram.
  *
  * Doctrine carries into the browser unchanged: a step is lit only when it
  * executed, no number is invented, revenue recovered is never a figure, the
@@ -38,114 +38,93 @@ const SCENARIO_NAMES = {
 
 const CSS = `
   :root {
-    --rail:#101315; --rail2:#171b1e; --railInk:#c9cdd1; --railMute:#6f767d;
-    --ws:#f4f3ee; --ws2:#ecebe4; --card:#ffffff; --ink:#14171a; --ink2:#5c636b; --ink3:#8b9199; --rule:#dcdad2; --rule2:#c7c4b8;
-    --ok:#1f7a4d; --bad:#b23a2e; --wait:#9a6b12; --sel:#e6e4db;
+    --bg:#f5f5f7; --group:#ffffff; --ink:#1d1d1f; --ink2:#6e6e73; --ink3:#aeaeb2; --line:#e8e8ed;
+    --ok:#34c759; --bad:#ff3b30; --wait:#ff9f0a; --link:#0066cc;
   }
   @media (prefers-color-scheme: dark) { :root {
-    --rail:#0a0c0e; --rail2:#111417; --railInk:#c9cdd1; --railMute:#6a7178;
-    --ws:#15181b; --ws2:#1b1f23; --card:#1b1f23; --ink:#e8e6df; --ink2:#a9aeb4; --ink3:#767c83; --rule:#2a2e33; --rule2:#3a3f45;
-    --ok:#5ec48b; --bad:#f08a7c; --wait:#e0b45a; --sel:#23282d;
+    --bg:#000000; --group:#1c1c1e; --ink:#f5f5f7; --ink2:#98989d; --ink3:#636366; --line:#2c2c2e;
+    --ok:#30d158; --bad:#ff453a; --wait:#ffd60a; --link:#2997ff;
   } }
   * { box-sizing:border-box; }
-  html, body { height:100%; }
-  body { margin:0; background:var(--ws); color:var(--ink); font:14px/1.5 "Instrument Sans", ui-sans-serif, -apple-system, system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
-  .mono { font-family:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric:tabular-nums; }
-  .serif { font-family:"Instrument Serif", ui-serif, "Iowan Old Style", Georgia, serif; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.47 -apple-system, "SF Pro Text", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; text-decoration:none; }
+  code, .code { font-family:ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; font-size:13px; }
+  .wrap { max-width:760px; margin:0 auto; padding:0 24px; }
 
-  .app { display:grid; grid-template-columns:232px 1fr; min-height:100vh; }
-  .rail { background:var(--rail); color:var(--railInk); padding:22px 14px; display:flex; flex-direction:column; gap:2px; position:sticky; top:0; height:100vh; }
-  .rail .brand { display:flex; align-items:baseline; gap:8px; padding:4px 10px 22px; }
-  .rail .brand b { font-weight:600; letter-spacing:-.01em; font-size:15px; color:#fff; }
-  .rail .brand span { font-size:12px; color:var(--railMute); }
-  .rail .group { font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--railMute); padding:16px 10px 6px; }
-  .rail a { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; color:var(--railInk); text-decoration:none; font-size:13.5px; }
-  .rail a:hover { background:var(--rail2); }
-  .rail a.on { background:var(--rail2); color:#fff; }
-  .rail .dot { width:8px; height:8px; border-radius:50%; border:1.5px solid var(--railMute); flex:none; }
-  .rail .dot.done { background:var(--ok); border-color:var(--ok); }
-  .rail .dot.failed { background:var(--bad); border-color:var(--bad); }
-  .rail .dot.next { border-color:#fff; border-style:dashed; }
-  .rail .dot.partial { border-color:var(--wait); }
-  .rail .count { margin-left:auto; font-size:11.5px; color:var(--railMute); }
-  .rail .count.hot { color:var(--wait); }
-  .rail .foot { margin-top:auto; padding:10px; font-size:11.5px; color:var(--railMute); line-height:1.5; }
+  .nav { position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px); border-bottom:1px solid var(--line); }
+  .nav .wrap { display:flex; align-items:center; gap:22px; height:48px; }
+  .nav .brand { font-weight:600; letter-spacing:-.01em; }
+  .nav nav { display:flex; gap:18px; overflow-x:auto; scrollbar-width:none; white-space:nowrap; font-size:13px; color:var(--ink2); }
+  .nav nav::-webkit-scrollbar { display:none; }
+  .nav nav a.on { color:var(--ink); }
+  .nav nav a .n { color:var(--ink3); margin-left:4px; font-size:12px; }
+  .nav .seal { margin-left:auto; font-size:12px; color:var(--ink3); white-space:nowrap; }
+  .nav .seal.bad { color:var(--bad); }
 
-  .ws { min-width:0; }
-  .top { display:flex; align-items:center; gap:14px; padding:14px 28px; border-bottom:1px solid var(--rule); background:var(--ws); position:sticky; top:0; z-index:5; }
-  .top .crumb { font-size:13px; color:var(--ink2); }
-  .top .crumb b { color:var(--ink); font-weight:500; }
-  .top .seal { margin-left:auto; font-size:12px; color:var(--ink3); }
-  .top .seal.bad { color:var(--bad); }
-  .btn { height:32px; padding:0 12px; border-radius:7px; border:1px solid var(--rule2); background:var(--card); color:var(--ink); font:inherit; font-size:13px; cursor:pointer; }
-  .btn.primary { background:var(--ink); color:var(--ws); border-color:var(--ink); }
-  .btn input { display:none; }
-
-  .view { display:none; padding:28px 28px 60px; }
-  .view.on { display:block; }
-  .verdict { font-size:30px; line-height:1.15; letter-spacing:-.01em; margin:0 0 6px; max-width:30ch; }
-  .verdict .muted { color:var(--ink3); }
-  .why { margin:0 0 22px; color:var(--ink2); max-width:64ch; }
-  .cmd { display:inline-flex; align-items:center; gap:10px; padding:8px 12px; background:var(--card); border:1px solid var(--rule2); border-radius:7px; font-size:13px; }
-  .cmd::before { content:"$"; color:var(--ink3); }
-  .cmd button { border:0; background:transparent; color:var(--ink3); font:inherit; font-size:12px; cursor:pointer; padding:0 0 0 6px; }
-
-  .cols { display:grid; grid-template-columns:1fr 300px; gap:36px; margin-top:30px; }
-  .h { display:flex; align-items:baseline; gap:12px; margin:0 0 10px; }
-  .h h2 { margin:0; font-size:13px; font-weight:600; letter-spacing:.02em; }
-  .h .n { color:var(--ink3); font-size:12.5px; }
-  .h .r { margin-left:auto; font-size:12.5px; color:var(--ink3); }
-
-  table { width:100%; border-collapse:collapse; font-size:13.5px; }
-  th { text-align:left; font-weight:500; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); padding:8px 10px 8px 0; border-bottom:1px solid var(--rule2); }
-  td { padding:10px 10px 10px 0; border-bottom:1px solid var(--rule); vertical-align:top; }
-  td.num, th.num { text-align:right; padding-right:0; white-space:nowrap; }
-  td.num:not(:last-child), th.num:not(:last-child) { padding-right:22px; }
-  tr.agree td { color:var(--ink2); }
-  .pill { display:inline-block; white-space:nowrap; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--rule2); background:var(--card); }
-  .pill.ok { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 40%, var(--rule2)); }
-  .pill.bad { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 40%, var(--rule2)); }
-  .pill.wait { color:var(--wait); border-color:color-mix(in srgb, var(--wait) 40%, var(--rule2)); }
-  .pill.none { color:var(--ink3); }
-  .tie { font-family:"JetBrains Mono", ui-monospace, monospace; font-size:12.5px; }
-  .tie.ok { color:var(--ok); } .tie.bad { color:var(--bad); } .tie.none { color:var(--ink3); }
-  .empty { padding:18px 0; color:var(--ink3); font-size:13.5px; border-bottom:1px solid var(--rule); }
-
-  .inbox .item { padding:12px 0; border-bottom:1px solid var(--rule); }
-  .inbox .item.ready { border-left:2px solid var(--wait); padding-left:12px; }
-  .inbox .who { font-weight:500; }
-  .inbox .what { color:var(--ink2); font-size:13px; }
-  .inbox .when { color:var(--ink3); font-size:12px; margin-top:2px; }
-  .inbox .cmd { margin-top:8px; font-size:12px; }
-
-  .fig { display:flex; justify-content:space-between; align-items:baseline; padding:9px 0; border-bottom:1px solid var(--rule); }
-  .fig .l { color:var(--ink2); font-size:13px; }
-  .fig .v { font-size:15px; }
-  .fig.total { border-top:1px solid var(--ink); border-bottom:3px double var(--ink); margin-top:8px; }
-  .note { color:var(--ink3); font-size:12px; margin:4px 0 0; }
-  .rule-line { margin:26px 0 0; padding:10px 14px; border-left:2px solid var(--ok); color:var(--ink); font-size:13.5px; background:var(--card); }
-
-  .panel { display:none; margin:0 28px; padding:18px 20px; border:1px solid var(--rule2); border-radius:10px; background:var(--card); }
+  .demo { display:flex; gap:18px; align-items:center; flex-wrap:wrap; padding:14px 0 0; font-size:13px; color:var(--ink2); }
+  .demo a, .demo label { color:var(--link); cursor:pointer; }
+  .demo .faint { color:var(--ink3); margin-left:-8px; }
+  .demo label input { display:none; }
+  .panel { display:none; margin-top:14px; background:var(--group); border-radius:12px; padding:16px 18px; }
   .panel.on { display:block; }
-  .panel .tabs { display:flex; gap:2px; margin-bottom:12px; flex-wrap:wrap; }
-  .panel .tabs button { border:1px solid transparent; background:transparent; color:var(--ink2); font:inherit; font-size:13px; padding:5px 10px; border-radius:7px; cursor:pointer; }
-  .panel .tabs button.on { background:var(--sel); color:var(--ink); }
-  .panel ol { margin:0 0 12px; padding-left:20px; color:var(--ink2); font-size:13.5px; }
-  .panel .after { margin:10px 0 0; color:var(--ink3); font-size:12.5px; }
-  .demo { margin:0 28px; padding:10px 14px; border:1px solid var(--rule2); border-radius:8px; background:var(--card); font-size:13px; color:var(--ink2); display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
-  .demo b { color:var(--ink); font-weight:500; }
+  .panel .tabs { display:flex; gap:16px; font-size:13px; color:var(--ink2); margin-bottom:12px; flex-wrap:wrap; }
+  .panel .tabs button { border:0; background:none; font:inherit; color:inherit; padding:0; cursor:pointer; }
+  .panel .tabs button.on { color:var(--ink); font-weight:600; }
+  .panel ol { margin:0 0 12px; padding-left:20px; color:var(--ink2); font-size:14px; }
+  .panel .after { margin:10px 0 0; color:var(--ink2); font-size:13px; }
+  .panel .after a { color:var(--link); }
 
-  @media (max-width:860px) {
-    .app { grid-template-columns:1fr; }
-    .rail { position:static; height:auto; flex-direction:row; flex-wrap:wrap; padding:12px; gap:4px; }
-    .rail .brand { padding:6px 10px; width:100%; }
-    .rail .group, .rail .foot { display:none; }
-    .rail a { padding:7px 10px; }
-    .cols { grid-template-columns:1fr; gap:28px; }
-    .top, .view, .demo, .panel { padding-left:16px; padding-right:16px; }
-    .demo, .panel { margin-left:16px; margin-right:16px; }
-    .verdict { font-size:24px; }
-    th:nth-child(4), td:nth-child(4) { display:none; }
+  .view { display:none; padding:36px 0 72px; }
+  .view.on { display:block; }
+  .app { margin:0; font-size:13px; color:var(--ink2); }
+  .seal2 { display:none; color:var(--ink3); } .seal2.bad { color:var(--bad); }
+  h1 { margin:4px 0 0; font-size:32px; line-height:1.15; font-weight:600; letter-spacing:-.022em; max-width:22ch; }
+  .lead { margin:8px 0 0; color:var(--ink2); max-width:56ch; }
+  .cmd { display:flex; align-items:center; gap:14px; margin:18px 0 0; color:var(--ink2); }
+  .cmd code { color:var(--ink); }
+  .cmd button, button.link { border:0; background:none; font:inherit; font-size:13px; color:var(--link); cursor:pointer; padding:0; }
+
+  .label { margin:34px 0 8px; padding:0 18px; font-size:13px; color:var(--ink2); display:flex; gap:12px; align-items:baseline; }
+  .label .r { margin-left:auto; color:var(--ink3); font-size:12px; }
+  .group { background:var(--group); border-radius:12px; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:14px; padding:12px 18px; min-height:46px; }
+  .row + .row { border-top:1px solid var(--line); }
+  .row .k { flex:1; min-width:0; }
+  .row .sub { display:block; font-size:13px; color:var(--ink2); }
+  .row .v { color:var(--ink2); text-align:right; white-space:nowrap; }
+  .row .v.ink { color:var(--ink); }
+  .row .chev { color:var(--ink3); font-size:18px; line-height:1; }
+  .row.empty { color:var(--ink2); }
+  .row.faint .k, .row.faint .v { color:var(--ink2); }
+  .row.total { border-top:1px solid var(--ink2); }
+  .row.total .v { color:var(--ink); }
+  a.row:hover { background:color-mix(in srgb, var(--ink) 3%, var(--group)); }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; background:var(--ink3); }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--bad); } .dot.wait { background:var(--wait); }
+  .dot.next { background:transparent; border:1.5px solid var(--ink2); }
+  .dot.none { background:transparent; border:1.5px solid var(--ink3); }
+  .dot.todo { background:var(--line); }
+
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-weight:400; font-size:12px; color:var(--ink2); padding:10px 0 8px; border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child { padding-left:18px; }
+  th:last-child, td:last-child { padding-right:18px; }
+  td { padding:11px 12px 11px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:0; }
+  td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  td.mute { color:var(--ink2); width:100%; }
+  td:not(.mute), th:not(.mute) { white-space:nowrap; }
+  td[colspan] { white-space:normal; }
+  td .dot { display:inline-block; vertical-align:middle; margin-right:10px; }
+  .foot { margin:26px 18px 0; font-size:13px; color:var(--ink2); }
+
+  @media (max-width:600px) {
+    .wrap { padding:0 16px; }
+    h1 { font-size:26px; }
+    .label { padding:0 14px; } .row { padding:12px 14px; }
+    th:first-child, td:first-child { padding-left:14px; } th:last-child, td:last-child { padding-right:14px; }
+    .hide-s, .nav .seal, .label .r, .demo .faint { display:none; }
+    .seal2 { display:inline; }
   }
 `;
 
@@ -153,256 +132,314 @@ const CSS = `
    to the Node modules it mirrors, and kept free of template literals so it
    can live inside one. */
 const JS = String.raw`
-(async function () {
-  var D = window.AKESO || {};
-  var L = Array.isArray(D.ledger) ? D.ledger.filter(function (e) { return e && typeof e === "object"; }) : [];
+(function () {
+  var NAMES = (window.AKESO && window.AKESO.scenarioNames) || {};
   var NOW = Date.now();
-  var NAMES = D.scenarioNames || {};
   function esc(v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
-  function kinds(k) { return L.filter(function (e) { return e.kind === k; }); }
-  function last(k) { var a = kinds(k); return a.length ? a[a.length - 1] : null; }
   function when(iso) { return iso ? String(iso).slice(0, 16).replace("T", " ") : ""; }
   function money(n) { return typeof n === "number" && isFinite(n) ? "$" + n.toFixed(2) : ""; }
   function $(id) { return document.getElementById(id); }
-
-  /* ---- fold ---- */
-  var check = last("check"), fix = last("fix"), sweep = last("sweep"), cert = last("certify");
-  var ranLive = !!(check && (check.lifecycleGrade || check.sandboxGrade));
-  var grade = check ? (check.grade || null) : null;
-  var passing = grade === "A";
-  var provenFix = !!(fix && check && check.seq > fix.seq && passing);
-  var accounts = (sweep && Array.isArray(sweep.accounts)) ? sweep.accounts : [];
-  var matched = sweep && sweep.comparison && sweep.comparison.counts ? (sweep.comparison.counts.matched || 0) : 0;
-  var agreeing = Math.max(0, matched - accounts.filter(function (a) { return a.verdict === "locked_out" || a.verdict === "still_entitled"; }).length);
-
-  var appr = {};
-  kinds("approval").forEach(function (e) {
-    if (!e.id) return;
-    var r = appr[e.id] || (appr[e.id] = { id: e.id, state: "queued" });
-    if (e.state === "queued") { Object.assign(r, e, { state: r.state === "queued" ? "queued" : r.state }); }
-    else if (e.state === "approved" || e.state === "cancelled") { if (r.state === "queued") r.state = e.state; }
-  });
-  var waiting = Object.values(appr).filter(function (r) {
-    if (r.state !== "queued") return false;
-    var q = Date.parse(r.queuedAt || ""); if (isFinite(q) && NOW - q > 7 * 86400000) return false;
-    return true;
-  }).map(function (r) { var ready = Date.parse(r.readyAt || ""); r.ready = isFinite(ready) && NOW >= ready; return r; });
-
-  var restores = kinds("restore");
-  var restored = restores.filter(function (e) { return e.direction === "grant" && e.result === "applied"; });
-  var removed = restores.filter(function (e) { return e.direction === "remove" && e.result === "applied"; });
-  var verified = restores.filter(function (e) { return e.result === "applied" && e.verified; });
-  var sweeps = kinds("sweep").filter(function (e) { return e.comparison && !e.couldNotRun; });
-  var exposure = sweeps.length ? sweeps.reduce(function (s, e) { return s + (Number(e.comparison.monthlyExposure) || 0); }, 0) / sweeps.length : null;
-
-  var covered = !!(cert && cert.policy);
-  var states = {
-    check: ranLive ? "done" : check ? "partial" : "todo",
-    fix: provenFix ? "done" : (fix && !passing) ? "failed" : fix ? "partial" : (ranLive && !passing) ? "next" : (ranLive && passing) ? "notneeded" : "todo",
-    monitor: (sweep && !sweep.couldNotRun && matched > 0) ? "done" : sweep ? "failed" : (passing || provenFix) ? "next" : "todo"
-  };
-
-  /* ---- the next step: the same ladder as the terminal ---- */
-  var step;
-  if (!check) step = { h: "Nothing has been checked yet.", w: "Akeso needs to look at your code before it can say anything about it.", c: "npx akeso-check" };
-  else if (!ranLive) step = { h: "Next: the real test, where a pretend customer pays and cancels.", w: "Reading code shows what your app is supposed to do. Only running it shows what it actually does.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
-  else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "The repair is in, but the test still fails.", w: "Akeso will not call a repair successful when its own test disagrees.", c: "npx akeso-check fix --show" } : { h: "Next: repair what the " + grade + " is about.", w: "It writes the corrected webhook handler and the one file that touches your database. Re-run the test to prove it.", c: "npx akeso-check fix" };
-  else if (grade === "?") step = { h: "The run itself had problems, so there is no verdict yet.", w: "This is about the run, not about your app.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
-  else if (sweep && sweep.couldNotRun) step = { h: "The last check of your real customers could not run.", w: String(sweep.couldNotRun), c: "npx akeso-check monitor" };
-  else if (sweep && matched === 0) step = { h: "Nothing could be compared yet, so nothing is proven about your customers.", w: "No Stripe subscription matched any account your app reported. Stripe has to carry the same account id your app uses.", c: null };
-  else if (sweep && waiting.length) step = { h: waiting.length + " removal" + (waiting.length === 1 ? " is" : "s are") + " waiting for your yes.", w: "Akeso never takes access away without a person deciding. Nothing has happened to those accounts yet.", c: "npx akeso-check approvals" };
-  else if (sweep) step = sweep.comparison && sweep.comparison.clean ? { h: "Everything matches right now.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement" } : { h: "The last run found accounts that do not match.", w: "The table below names them.", c: "npx akeso-check approvals" };
-  else step = { h: provenFix ? "The repair holds. Next: check that today's real customers match." : "Your billing code passes. Next: check that today's real customers match.", w: "Correct code from now on does not fix the accounts that already drifted.", c: "npx akeso-check monitor" };
-
-  /* ---- render ---- */
-  var app = (D.appName || "this app");
-  $("crumbApp").textContent = app;
-  ["check", "fix", "monitor"].forEach(function (k) { var d = $("dot-" + k); d.className = "dot " + states[k]; });
-  var wc = $("count-approvals"); wc.textContent = waiting.length ? String(waiting.length) : ""; wc.className = "count" + (waiting.length ? " hot" : "");
-  $("count-ledger").textContent = L.length ? String(L.length) : "";
-
-  $("verdict").innerHTML = esc(step.h);
-  $("why").textContent = step.w || "";
-  $("next").innerHTML = step.c ? '<span class="cmd mono">' + esc(step.c) + '<button data-copy="' + esc(step.c) + '">copy</button></span>' : "";
-
-  function tie(a) { return a.verdict === "locked_out" || a.verdict === "still_entitled" ? '<span class="tie bad">&ne;</span>' : a.verdict === "no_conclusion" || a.verdict === "no_subscription" ? '<span class="tie none">?</span>' : '<span class="tie ok">=</span>'; }
-  function stripePill(a) { return a.stripe == null ? '<span class="pill none">no subscription</span>' : '<span class="pill ' + (["active", "trialing", "past_due"].indexOf(a.stripe) >= 0 ? "ok" : a.stripe === "incomplete" || a.stripe === "paused" ? "none" : "bad") + '">' + esc(a.stripe) + '</span>'; }
-  function appPill(a) { return a.app == null ? '<span class="pill none">unknown</span>' : a.app ? '<span class="pill ok">has access</span>' : '<span class="pill bad">no access</span>'; }
-  function meaning(a) { return { locked_out: "paying, but locked out. Akeso restores this.", still_entitled: "not paying, still has access. Waits for your yes.", no_conclusion: "mid-flight; no verdict drawn.", no_subscription: "no Stripe subscription; reported, never acted on." }[a.verdict] || ""; }
-
-  var rows = accounts.map(function (a) { return "<tr><td class=mono>" + esc(a.account) + "</td><td>" + stripePill(a) + "</td><td>" + tie(a) + "</td><td>" + appPill(a) + "</td><td>" + esc(meaning(a)) + "</td><td class='num mono'>" + esc(money(a.priceMonthly)) + "</td></tr>"; }).join("");
-  if (sweep && matched > 0 && agreeing > 0) rows += '<tr class="agree"><td class="mono">' + agreeing + ' more</td><td><span class="pill ok">paying</span></td><td><span class="tie ok">=</span></td><td><span class="pill ok">has access</span></td><td>agree. Nothing to do.</td><td></td></tr>';
-  $("accounts").innerHTML = rows || '<tr><td colspan="6" class="empty">' + (sweep ? "Nothing could be compared on the last sweep." : "No sweep has run yet. The monitor fills this in.") + "</td></tr>";
-  $("accountsN").textContent = sweep ? (matched + " compared, " + accounts.filter(function (a) { return a.verdict === "locked_out" || a.verdict === "still_entitled"; }).length + " disagree") : "";
-  $("accountsWhen").textContent = sweep ? when(sweep.at) : "";
-
-  var ib = $("inbox");
-  ib.innerHTML = waiting.length ? waiting.map(function (r) {
-    return '<div class="item' + (r.ready ? " ready" : "") + '"><div class="who mono">' + esc(r.account) + '</div><div class="what">' + esc(r.reason || "") + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + " a month at list" : "") + '</div><div class="when">' + (r.ready ? "ready for your yes" : "opens " + esc(when(r.readyAt))) + '</div><span class="cmd mono">' + esc("npx akeso-check approvals --approve " + r.id) + "</span></div>";
-  }).join("") + '<p class="note">Akeso never removes access on its own. Nothing here has happened.</p>' : '<div class="empty">Nothing is waiting for you. Akeso never removes access on its own, so this is the only place removals ever appear.</div>';
-
-  /* check view */
-  var sc = (check && check.scenarioResults) || [];
-  $("scenarios").innerHTML = sc.length ? sc.map(function (r) { var o = r.outcome; return "<tr><td>" + esc(NAMES[r.id] || r.id) + "</td><td>" + (o === "pass" ? '<span class="pill ok">pass</span>' : o === "fail" ? '<span class="pill bad">fail</span>' : '<span class="pill none">' + esc(o) + "</span>") + "</td></tr>"; }).join("") : '<tr><td colspan="2" class="empty">' + (check ? "The code was read; the live test has not run." : "Not run yet.") + "</td></tr>";
-  $("checkMeta").textContent = check ? (grade ? "grade " + grade + " · " : "") + when(check.at) : "";
-
-  /* fix view */
-  $("files").innerHTML = fix ? (fix.files || []).map(function (f) { return "<tr><td>" + esc(f.action || "") + '</td><td class="mono">' + esc(f.path || "") + "</td></tr>"; }).join("") : '<tr><td colspan="2" class="empty">' + (states.fix === "notneeded" ? "Nothing needed repairing." : "No repair has been written.") + "</td></tr>";
-  $("fixMeta").textContent = fix ? when(fix.at) + " · " + ((fix.repairs || []).length) + " repairs: " + (fix.repairs || []).join(", ") : "";
-  $("fixProof").textContent = provenFix ? "Proven: the same test was run again afterwards and passed." : (fix && !passing) ? "Not proven: the test still fails, so Akeso does not call this repaired." : fix ? "Applied, not yet re-tested." : "";
-
-  /* monitor view */
-  var sw = kinds("sweep");
-  $("sweeps").innerHTML = sw.length ? sw.slice().reverse().map(function (e) { var c = e.comparison || {}; return "<tr><td class=mono>" + esc(when(e.at)) + "</td><td>" + (e.couldNotRun ? '<span class="pill bad">could not run</span>' : c.comparable === false ? '<span class="pill none">compared nothing</span>' : c.clean ? '<span class="pill ok">all matching</span>' : '<span class="pill bad">mismatches</span>') + "</td><td class='num mono'>" + esc(c.counts ? c.counts.matched : "") + "</td><td class='num mono'>" + esc(typeof c.monthlyExposure === "number" ? money(c.monthlyExposure) : "") + "</td></tr>"; }).join("") : '<tr><td colspan="4" class="empty">No sweep has run yet.</td></tr>';
-  $("coverage").textContent = covered ? "Covered since " + when(cert.at) + " under rule version " + esc((cert.policy && cert.policy.ruleVersion) || "1") + "." : "Not covering this app yet. Coverage starts when you confirm the rules: npx akeso-check certify";
-
-  /* approvals view */
-  $("queue").innerHTML = waiting.length ? waiting.map(function (r) { return '<tr><td class="mono">' + esc(r.account) + "</td><td>" + esc(r.reason || "") + '</td><td class="num mono">' + esc(money(r.priceMonthly)) + "</td><td>" + (r.ready ? '<span class="pill wait">ready</span>' : "opens " + esc(when(r.readyAt))) + '</td><td><span class="cmd mono">' + esc("npx akeso-check approvals --approve " + r.id) + "</span></td></tr>"; }).join("") : '<tr><td colspan="5" class="empty">Nothing is waiting for you.</td></tr>';
-
-  /* receipts view */
-  $("rRestored").textContent = String(restored.length); $("rVerified").textContent = verified.length + " confirmed by reading back";
-  $("rRemoved").textContent = String(removed.length);
-  $("rExposure").textContent = sweeps.length ? money(exposure) + " / mo" : "not measured";
-  $("restores").innerHTML = restores.length ? restores.slice().reverse().map(function (e) { return "<tr><td class=mono>" + esc(when(e.at)) + "</td><td class=mono>" + esc(e.account) + "</td><td>" + esc(e.direction) + "</td><td>" + (e.result === "applied" && e.verified ? '<span class="pill ok">applied, confirmed</span>' : '<span class="pill ' + (e.result === "applied" ? "wait" : "bad") + '">' + esc(e.result || "") + "</span>") + "</td></tr>"; }).join("") : '<tr><td colspan="4" class="empty">No changes have been made.</td></tr>';
-
-  /* ledger view + chain */
-  $("entries").innerHTML = L.length ? L.slice().reverse().map(function (e) {
-    var sum = e.kind === "check" ? "grade " + (e.grade || "read only") : e.kind === "fix" ? ((e.files || []).length) + " files" : e.kind === "sweep" ? (e.couldNotRun ? "could not run" : (e.comparison && e.comparison.counts ? e.comparison.counts.matched + " compared" : "")) : e.kind === "restore" ? e.direction + " " + e.account + " " + e.result : e.kind === "approval" ? e.state + " " + (e.account || "") : e.kind === "certify" ? "rules confirmed" : "";
-    return "<tr><td class=mono>" + esc(e.seq) + "</td><td class=mono>" + esc(when(e.at)) + "</td><td>" + esc(e.kind) + "</td><td>" + esc(sum) + "</td></tr>";
-  }).join("") : '<tr><td colspan="4" class="empty">The ledger is empty.</td></tr>';
-
-  async function sha(s) { var b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(function (x) { return x.toString(16).padStart(2, "0"); }).join(""); }
-  var seal = $("seal"); seal.textContent = L.length ? "verifying chain" : "no ledger loaded";
-  if (L.length && crypto.subtle) {
-    var prev = null, broken = null;
-    for (var i = 0; i < L.length; i++) {
-      var e = L[i]; var rest = {}; Object.keys(e).forEach(function (k) { if (k !== "hash") rest[k] = e[k]; });
-      if ((e.prev || null) !== prev) { broken = e.seq || i + 1; break; }
-      var h = await sha((prev || "genesis") + "\n" + JSON.stringify(rest));
-      if (h !== e.hash) { broken = e.seq || i + 1; break; }
-      prev = e.hash;
-    }
-    seal.textContent = broken ? "chain BROKEN at entry " + broken : L.length + " entries · chain unbroken";
-    seal.className = "seal" + (broken ? " bad" : "");
-  } else if (L.length) { seal.textContent = L.length + " entries"; }
-
-  /* nav + copy */
-  function show(id) { document.querySelectorAll(".view").forEach(function (v) { v.classList.toggle("on", v.id === "v-" + id); }); document.querySelectorAll(".rail a[data-view]").forEach(function (a) { a.classList.toggle("on", a.dataset.view === id); }); $("crumbView").textContent = ({ overview: "Overview", check: "Check", fix: "Fix", monitor: "Monitor", approvals: "Approvals", receipts: "Receipts", ledger: "Ledger" })[id] || id; }
-  function route() { var id = (location.hash || "#overview").slice(1); show(document.getElementById("v-" + id) ? id : "overview"); }
-  window.addEventListener("hashchange", route); route();
-  document.addEventListener("click", function (e) { var b = e.target.closest("[data-copy]"); if (!b) return; navigator.clipboard.writeText(b.dataset.copy).then(function () { b.textContent = "copied"; setTimeout(function () { b.textContent = "copy"; }, 1200); }); });
-
-  /* site only: load a ledger file, run panel */
-  var file = $("ledgerFile"); if (file) file.addEventListener("change", function () { var f = file.files[0]; if (!f) return; f.text().then(function (t) { var rows = t.split("\n").filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (x) { return { kind: "unreadable" }; } }); window.AKESO = Object.assign({}, D, { ledger: rows, appName: f.name.replace(/\.jsonl$/, "") }); document.body.innerHTML = D.shell; }); });
-  var runBtn = $("runBtn"), panel = $("runPanel"); if (runBtn && panel) runBtn.addEventListener("click", function () { panel.classList.toggle("on"); });
-  var tabs = $("tabs"); if (tabs) {
-    var P = "Run npx akeso-check here, follow its next steps, and explain the report to me in plain English.";
-    var T = { terminal: { paste: "npx akeso-check" }, claude: { paste: P }, cursor: { paste: P }, codex: { paste: P }, lovable: { paste: "npx akeso-check", steps: true } };
-    tabs.addEventListener("click", function (e) { var t = e.target.dataset.tool; if (!t) return; tabs.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b === e.target); }); $("cmd").textContent = T[t].paste; $("cmdCopy").dataset.copy = T[t].paste; $("steps").hidden = !T[t].steps; $("stepsAfter").hidden = !T[t].steps; });
+  function cap(s) { s = String(s || ""); return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  function row(cls, dot, k, sub, v, href) {
+    var inner = (dot ? '<span class="dot ' + dot + '"></span>' : "") + '<span class="k">' + k + (sub ? '<span class="sub">' + sub + "</span>" : "") + "</span>" + (v != null ? '<span class="v">' + v + "</span>" : "") + (href ? '<span class="chev">&rsaquo;</span>' : "");
+    return href ? '<a class="row ' + cls + '" href="' + href + '">' + inner + "</a>" : '<div class="row ' + cls + '">' + inner + "</div>";
   }
+  function empty(text) { return '<div class="row empty">' + esc(text) + "</div>"; }
+
+  function render() {
+    var D = window.AKESO || {};
+    var L = Array.isArray(D.ledger) ? D.ledger.filter(function (e) { return e && typeof e === "object"; }) : [];
+    function kinds(k) { return L.filter(function (e) { return e.kind === k; }); }
+    function last(k) { var a = kinds(k); return a.length ? a[a.length - 1] : null; }
+
+    /* ---- fold ---- */
+    var check = last("check"), fix = last("fix"), sweep = last("sweep"), cert = last("certify");
+    var ranLive = !!(check && (check.lifecycleGrade || check.sandboxGrade));
+    var grade = check ? (check.grade || null) : null;
+    var passing = grade === "A";
+    var provenFix = !!(fix && check && check.seq > fix.seq && passing);
+    var accounts = (sweep && Array.isArray(sweep.accounts)) ? sweep.accounts : [];
+    var matched = sweep && sweep.comparison && sweep.comparison.counts ? (sweep.comparison.counts.matched || 0) : 0;
+    var disagree = accounts.filter(function (a) { return a.verdict === "locked_out" || a.verdict === "still_entitled"; });
+    var agreeing = Math.max(0, matched - disagree.length);
+    var scenarios = (check && check.scenarioResults) || [];
+    var passed = scenarios.filter(function (r) { return r.outcome === "pass"; }).length;
+
+    var appr = {};
+    kinds("approval").forEach(function (e) {
+      if (!e.id) return;
+      var r = appr[e.id] || (appr[e.id] = { id: e.id, state: "queued" });
+      if (e.state === "queued") { Object.assign(r, e, { state: r.state === "queued" ? "queued" : r.state }); }
+      else if (e.state === "approved" || e.state === "cancelled") { if (r.state === "queued") r.state = e.state; }
+    });
+    var waiting = Object.values(appr).filter(function (r) {
+      if (r.state !== "queued") return false;
+      var q = Date.parse(r.queuedAt || ""); if (isFinite(q) && NOW - q > 7 * 86400000) return false;
+      return true;
+    }).map(function (r) { var ready = Date.parse(r.readyAt || ""); r.ready = isFinite(ready) && NOW >= ready; return r; });
+    var queuedFor = {}; waiting.forEach(function (r) { queuedFor[r.account] = r; });
+
+    var restores = kinds("restore");
+    var restored = restores.filter(function (e) { return e.direction === "grant" && e.result === "applied"; });
+    var restoredFor = {}; restored.forEach(function (e) { restoredFor[e.account] = e; });
+    var removed = restores.filter(function (e) { return e.direction === "remove" && e.result === "applied"; });
+    var verified = restores.filter(function (e) { return e.result === "applied" && e.verified; });
+    var sweeps = kinds("sweep").filter(function (e) { return e.comparison && !e.couldNotRun; });
+    var exposure = sweeps.length ? sweeps.reduce(function (s, e) { return s + (Number(e.comparison.monthlyExposure) || 0); }, 0) / sweeps.length : null;
+    var covered = !!(cert && cert.policy);
+
+    var states = {
+      check: ranLive ? "done" : check ? "partial" : "todo",
+      fix: provenFix ? "done" : (fix && !passing) ? "failed" : fix ? "partial" : (ranLive && !passing) ? "next" : (ranLive && passing) ? "notneeded" : "todo",
+      monitor: (sweep && !sweep.couldNotRun && matched > 0) ? "done" : sweep ? "failed" : (passing || provenFix) ? "next" : "todo"
+    };
+    var DOT = { done: "ok", failed: "bad", partial: "wait", next: "next", notneeded: "none", todo: "todo" };
+
+    /* ---- the next step: the same ladder as the terminal ---- */
+    var step;
+    if (!check) step = { h: "Nothing has been checked yet.", w: "", c: "npx akeso-check" };
+    else if (!ranLive) step = { h: "Your code was read. It has not been run.", w: "Only the live test, where a pretend customer pays and cancels, produces a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
+    else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "The repair is in. The test still fails.", w: "Akeso will not call a repair successful when its own test disagrees.", c: "npx akeso-check fix --show" } : { h: "Grade " + grade + ". " + plural(scenarios.length - passed, "situation", "situations") + " handled wrong.", w: "The fix writes the corrected webhook handler and the one file that touches your database.", c: "npx akeso-check fix" };
+    else if (grade === "?") step = { h: "The run had problems, so there is no verdict.", w: "This is about the run, not your app.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
+    else if (sweep && sweep.couldNotRun) step = { h: "The last sweep could not run.", w: String(sweep.couldNotRun), c: "npx akeso-check monitor" };
+    else if (sweep && matched === 0) step = { h: "Nothing could be compared yet.", w: "No Stripe subscription matched any account your app reported. Stripe has to carry the account id your app uses.", c: null };
+    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal is", "removals are") + " waiting for your yes.", w: "Akeso never takes access away without a person deciding.", c: "npx akeso-check approvals" };
+    else if (sweep) step = sweep.comparison && sweep.comparison.clean ? { h: "Everything matches.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement" } : { h: "Accounts do not match.", w: "The list below names them.", c: "npx akeso-check approvals" };
+    else step = { h: provenFix ? "The repair holds." : "Your billing code passes.", w: "Correct code from now on does not fix accounts that already drifted. The monitor compares today's real customers against Stripe.", c: "npx akeso-check monitor" };
+
+    /* ---- render ---- */
+    var app = D.appName || "this app";
+    document.querySelectorAll(".appName").forEach(function (n) { n.textContent = app; });
+    $("verdict").textContent = step.h;
+    $("lead").textContent = step.w || "";
+    $("lead").hidden = !step.w;
+    $("next").innerHTML = step.c ? '<code>' + esc(step.c) + '</code><button data-copy="' + esc(step.c) + '">Copy</button>' : "";
+    $("next").hidden = !step.c;
+
+    var na = $("count-approvals"); na.textContent = waiting.length ? String(waiting.length) : "";
+    $("count-ledger").textContent = L.length ? String(L.length) : "";
+
+    /* the loop */
+    var loopRows = [
+      row("", DOT[states.check], "Check", null, ranLive ? "Grade " + esc(grade || "?") : check ? "Code read, not run" : "Not run", "#check"),
+      row("", DOT[states.fix], "Fix", null, provenFix ? plural((fix.files || []).length, "file", "files") + " · proven by re-test" : (fix && !passing) ? "Applied · test still fails" : fix ? "Applied · not re-tested" : states.fix === "notneeded" ? "Not needed" : states.fix === "next" ? "Next" : "Not yet", "#fix"),
+      row("", DOT[states.monitor], "Monitor", null, states.monitor === "done" ? matched + " compared · " + plural(disagree.length, "disagrees", "disagree") : sweep && sweep.couldNotRun ? "Could not run" : sweep ? "Compared nothing" : states.monitor === "next" ? "Next" : "Not yet", "#monitor")
+    ];
+    $("loop").innerHTML = loopRows.join("");
+
+    /* waiting for you */
+    $("inbox").innerHTML = waiting.length ? waiting.map(function (r) {
+      return row("", r.ready ? "wait" : "none", '<span class="code">' + esc(r.account) + "</span>", esc(r.reason || ""), (typeof r.priceMonthly === "number" ? money(r.priceMonthly) + "/mo · " : "") + (r.ready ? "Ready" : "Opens " + esc(when(r.readyAt))), "#approvals");
+    }).join("") : empty("Nothing. Akeso never removes access on its own, so removals only ever appear here.");
+
+    /* accounts that disagree */
+    function stripeWord(a) { return a.stripe == null ? "None" : cap(a.stripe); }
+    function appWord(a) { return a.app == null ? "Unknown" : a.app ? "Has access" : "No access"; }
+    function meaning(a) {
+      if (a.verdict === "locked_out") return restoredFor[a.account] ? "Paying, was locked out. Restored." : "Paying, locked out. Akeso restores this.";
+      if (a.verdict === "still_entitled") return queuedFor[a.account] ? "Not paying, still has access. Waiting for your yes." : "Not paying, still has access.";
+      if (a.verdict === "no_conclusion") return "Mid-flight. No verdict.";
+      if (a.verdict === "no_subscription") return "No Stripe subscription. Reported only.";
+      return "";
+    }
+    function dotFor(a) { return a.verdict === "locked_out" ? (restoredFor[a.account] ? "ok" : "bad") : a.verdict === "still_entitled" ? "wait" : "none"; }
+    function accountRow(a) { return '<tr><td><span class="dot ' + dotFor(a) + '"></span><span class="code">' + esc(a.account) + "</span></td><td>" + esc(stripeWord(a)) + "</td><td>" + esc(appWord(a)) + '</td><td class="mute hide-s">' + esc(meaning(a)) + '</td><td class="num">' + esc(money(a.priceMonthly)) + "</td></tr>"; }
+    var rows = disagree.map(accountRow).join("");
+    var rest = [];
+    var mid = accounts.filter(function (a) { return a.verdict === "no_conclusion"; }).length;
+    var nosub = accounts.filter(function (a) { return a.verdict === "no_subscription"; }).length;
+    if (sweep && matched > 0) rest.push(agreeing + " agree");
+    if (mid) rest.push(mid + " mid-flight");
+    if (nosub) rest.push(nosub + " without a subscription");
+    if (rest.length) rows += '<tr><td colspan="5" class="mute">' + esc(rest.join(" · ")) + "</td></tr>";
+    $("accounts").innerHTML = rows || '<tr><td colspan="5" class="mute">' + (sweep ? "Nothing could be compared on the last sweep." : "No sweep has run yet.") + "</td></tr>";
+    $("accountsN").textContent = sweep ? matched + " compared" : "";
+    $("accountsWhen").textContent = sweep ? when(sweep.at) : "";
+
+    /* receipts */
+    $("receipts").innerHTML =
+      row("", null, "Access restored", verified.length + " confirmed by reading back", '<span class="ink">' + restored.length + "</span>") +
+      row("", null, "Access removed", null, '<span class="ink">' + removed.length + "</span>") +
+      row("", null, "Exposure, per sweep", null, sweeps.length ? money(exposure) + "/mo" : "Not measured") +
+      row("total", null, "Revenue recovered", "Akeso does not see your payouts", "Not measured");
+
+    /* check view */
+    $("scenarios").innerHTML = scenarios.length ? scenarios.map(function (r) { var o = r.outcome; return row("", o === "pass" ? "ok" : o === "fail" ? "bad" : "none", esc(NAMES[r.id] || r.id), null, o === "pass" ? "Passed" : o === "fail" ? "Failed" : cap(o)); }).join("") : empty(check ? "The code was read. The live test has not run." : "Not run yet.");
+    $("checkMeta").textContent = check ? (grade ? "Grade " + grade + " · " : "") + when(check.at) : "";
+
+    /* fix view */
+    $("files").innerHTML = fix ? (fix.files || []).map(function (f) { return row("", null, '<span class="code">' + esc(f.path || "") + "</span>", null, cap(f.action || "")); }).join("") : empty(states.fix === "notneeded" ? "Nothing needed repairing." : "No repair has been written.");
+    $("fixMeta").textContent = fix ? when(fix.at) : "";
+    $("fixProof").textContent = provenFix ? "The same test was run again afterwards and passed." : (fix && !passing) ? "The test still fails, so Akeso does not call this repaired." : fix ? "Applied, not yet re-tested." : "";
+
+    /* monitor view: every sweep, then the full account table */
+    var sw = kinds("sweep");
+    $("sweeps").innerHTML = sw.length ? sw.slice().reverse().map(function (e) { var c = e.comparison || {}; return row("", e.couldNotRun ? "bad" : c.comparable === false ? "none" : c.clean ? "ok" : "wait", esc(when(e.at)), null, e.couldNotRun ? "Could not run" : c.comparable === false ? "Compared nothing" : (c.counts ? c.counts.matched + " compared · " : "") + (c.clean ? "all match" : money(c.monthlyExposure) + "/mo exposed")); }).join("") : empty("No sweep has run yet.");
+    $("allAccounts").innerHTML = accounts.length ? accounts.map(accountRow).join("") + (sweep && matched > 0 && agreeing > 0 ? '<tr><td colspan="5" class="mute">' + agreeing + " more agree</td></tr>" : "") : '<tr><td colspan="5" class="mute">No accounts to show.</td></tr>';
+    $("coverage").textContent = covered ? "Covered since " + when(cert.at) + ", rule version " + ((cert.policy && cert.policy.ruleVersion) || "1") + "." : "Not covering this app yet. Coverage starts when you confirm the rules: npx akeso-check certify";
+
+    /* approvals view */
+    $("queue").innerHTML = waiting.length ? waiting.map(function (r) {
+      var c = "npx akeso-check approvals --approve " + r.id;
+      return row("", r.ready ? "wait" : "none", '<span class="code">' + esc(r.account) + "</span>", esc(r.reason || "") + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + "/mo" : ""), r.ready ? "Ready" : "Opens " + esc(when(r.readyAt))) +
+        '<div class="row"><span class="k"><code>' + esc(c) + '</code></span><button class="link" data-copy="' + esc(c) + '">Copy</button></div>';
+    }).join("") : empty("Nothing is waiting for you.");
+
+    /* receipts view */
+    $("restores").innerHTML = restores.length ? restores.slice().reverse().map(function (e) { return row("", e.result === "applied" && e.verified ? "ok" : e.result === "applied" ? "wait" : "bad", '<span class="code">' + esc(e.account) + "</span>", esc(when(e.at)), esc(cap(e.direction)) + " · " + (e.result === "applied" && e.verified ? "confirmed" : esc(e.result || ""))); }).join("") : empty("No changes have been made.");
+
+    /* ledger view + chain */
+    $("entries").innerHTML = L.length ? L.slice().reverse().map(function (e) {
+      var sum = e.kind === "check" ? "Grade " + (e.grade || "read only") : e.kind === "fix" ? plural((e.files || []).length, "file", "files") : e.kind === "sweep" ? (e.couldNotRun ? "Could not run" : (e.comparison && e.comparison.counts ? e.comparison.counts.matched + " compared" : "")) : e.kind === "restore" ? cap(e.direction) + " " + e.account + " · " + e.result : e.kind === "approval" ? cap(e.state) + " " + (e.account || "") : e.kind === "certify" ? "Rules confirmed" : "";
+      return row("", null, '<span class="code">' + esc(e.seq) + "</span>&nbsp;&nbsp;" + esc(cap(e.kind)), esc(sum), esc(when(e.at)));
+    }).join("") : empty("The ledger is empty.");
+
+    var seal = $("seal"); seal.className = "seal"; seal.textContent = L.length ? "Verifying" : "No ledger";
+    if (L.length && window.crypto && crypto.subtle) {
+      (async function () {
+        function sha(s) { return crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)).then(function (b) { return Array.from(new Uint8Array(b)).map(function (x) { return x.toString(16).padStart(2, "0"); }).join(""); }); }
+        var prev = null, broken = null;
+        for (var i = 0; i < L.length; i++) {
+          var e = L[i]; var rest = {}; Object.keys(e).forEach(function (k) { if (k !== "hash") rest[k] = e[k]; });
+          if ((e.prev || null) !== prev) { broken = e.seq || i + 1; break; }
+          var h = await sha((prev || "genesis") + "\n" + JSON.stringify(rest));
+          if (h !== e.hash) { broken = e.seq || i + 1; break; }
+          prev = e.hash;
+        }
+        seal.textContent = broken ? "Chain broken at entry " + broken : L.length + " entries · chain intact";
+        seal.className = "seal" + (broken ? " bad" : "");
+        var s2 = $("seal2"); if (s2) { s2.textContent = " · " + seal.textContent; s2.className = "seal2" + (broken ? " bad" : ""); }
+      })();
+    } else if (L.length) { seal.textContent = L.length + " entries"; }
+
+    /* site only: load a ledger file, run panel */
+    var file = $("ledgerFile"); if (file) file.addEventListener("change", function () { var f = file.files[0]; if (!f) return; f.text().then(function (t) { var rows = t.split("\n").filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (x) { return { kind: "unreadable" }; } }); window.AKESO = Object.assign({}, D, { ledger: rows, appName: f.name.replace(/\.jsonl$/, ""), demo: false }); document.body.innerHTML = D.shell; render(); route(); }); });
+    var runBtn = $("runBtn"), panel = $("runPanel"); if (runBtn && panel) runBtn.addEventListener("click", function (e) { e.preventDefault(); panel.classList.toggle("on"); });
+    var tabs = $("tabs"); if (tabs) {
+      var P = "Run npx akeso-check here, follow its next steps, and explain the report to me in plain English.";
+      var T = { terminal: { paste: "npx akeso-check" }, claude: { paste: P }, cursor: { paste: P }, codex: { paste: P }, lovable: { paste: "npx akeso-check", steps: true } };
+      tabs.addEventListener("click", function (e) { var t = e.target.dataset.tool; if (!t) return; tabs.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b === e.target); }); $("cmd").textContent = T[t].paste; $("cmdCopy").dataset.copy = T[t].paste; $("steps").hidden = !T[t].steps; $("stepsAfter").hidden = !T[t].steps; });
+    }
+    var demoLine = $("demoLine"); if (demoLine && D.demo === false) demoLine.remove();
+  }
+
+  /* nav + copy live on the document, so they survive a re-render */
+  var TITLES = { overview: "Overview", check: "Check", fix: "Fix", monitor: "Monitor", approvals: "Approvals", receipts: "Receipts", ledger: "Ledger" };
+  function show(id) { document.querySelectorAll(".view").forEach(function (v) { v.classList.toggle("on", v.id === "v-" + id); }); document.querySelectorAll("[data-view]").forEach(function (a) { a.classList.toggle("on", a.dataset.view === id); }); window.scrollTo(0, 0); }
+  function route() { var id = (location.hash || "#overview").slice(1); show(document.getElementById("v-" + id) ? id : "overview"); }
+  window.addEventListener("hashchange", route);
+  document.addEventListener("click", function (e) { var b = e.target.closest("[data-copy]"); if (!b) return; navigator.clipboard.writeText(b.dataset.copy).then(function () { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1200); }); });
+  render(); route();
 })();
 `;
 
 export function renderDashboard({ ledger = [], appName = "this app", root = null, hosted = false, demo = false } = {}) {
-  const data = JSON.stringify({ ledger, appName, scenarioNames: SCENARIO_NAMES }).replaceAll("</", "<\\/");
-  const fonts = hosted
-    ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">`
-    : "";
+  const data = JSON.stringify({ ledger, appName, demo, scenarioNames: SCENARIO_NAMES }).replaceAll("</", "<\\/");
 
   const runPanel = hosted ? `
-  <div class="demo">${demo ? `<b>Demo ledger</b> from a real run on a test app.` : `<b>Your ledger.</b>`} <button class="btn primary" id="runBtn">Run on your app</button> <label class="btn">Load your ledger<input type="file" id="ledgerFile" accept=".jsonl,application/json,text/plain"></label> <span class="note" style="margin:0">Nothing is uploaded; the file is read in this tab.</span></div>
-  <div class="panel" id="runPanel">
-    <div class="tabs" id="tabs"><button class="on" data-tool="terminal">Terminal</button><button data-tool="claude">Claude Code</button><button data-tool="cursor">Cursor</button><button data-tool="codex">Codex</button><button data-tool="lovable">Lovable / Bolt / v0</button></div>
-    <ol id="steps" hidden>
-      <li>Open your project in your builder.</li><li>Click the GitHub button, usually at the top right, and follow its steps to put your project on GitHub. Lovable, Bolt and v0 all have this.</li><li>Go to github.com and open your new repository.</li><li>Click the green Code button.</li><li>Click Codespaces, then Create codespace on main.</li><li>A code editor opens in a new browser tab. Wait for it to finish loading.</li><li>If a box asks Do you trust the authors, click Trust Folder and Continue.</li><li>Click inside the terminal panel at the bottom of the screen, paste this, and press Enter:</li>
-    </ol>
-    <span class="cmd mono" id="cmdWrap"><span id="cmd">npx akeso-check</span><button id="cmdCopy" data-copy="npx akeso-check">copy</button></span>
-    <p class="after" id="stepsAfter" hidden>When it finishes, your results print right there in the terminal, and .akeso/ledger.jsonl is written in your project. Load it above to see it here.</p>
-    <p class="after">Free. Runs on your machine. Zero dependencies, plain JavaScript you can read first: <a href="https://github.com/jacekimmy/akeso-check">github.com/jacekimmy/akeso-check</a></p>
-  </div>` : "";
+    <div class="demo">${demo ? `<span id="demoLine">Demo ledger, from a real run on a test app.</span>` : ""}<a href="#" id="runBtn">Run on your app</a><label>Load your ledger<input type="file" id="ledgerFile" accept=".jsonl,application/json,text/plain"></label><span class="faint">read in this tab, never uploaded</span></div>
+    <div class="panel" id="runPanel">
+      <div class="tabs" id="tabs"><button class="on" data-tool="terminal">Terminal</button><button data-tool="claude">Claude Code</button><button data-tool="cursor">Cursor</button><button data-tool="codex">Codex</button><button data-tool="lovable">Lovable / Bolt / v0</button></div>
+      <ol id="steps" hidden>
+        <li>Open your project in your builder.</li><li>Click the GitHub button, usually at the top right, and follow its steps to put your project on GitHub. Lovable, Bolt and v0 all have this.</li><li>Go to github.com and open your new repository.</li><li>Click the green Code button.</li><li>Click Codespaces, then Create codespace on main.</li><li>A code editor opens in a new browser tab. Wait for it to finish loading.</li><li>If a box asks Do you trust the authors, click Trust Folder and Continue.</li><li>Click inside the terminal panel at the bottom of the screen, paste this, and press Enter:</li>
+      </ol>
+      <div class="cmd" style="margin:0"><code id="cmd">npx akeso-check</code><button id="cmdCopy" data-copy="npx akeso-check">Copy</button></div>
+      <p class="after" id="stepsAfter" hidden>When it finishes, your results print in the terminal and .akeso/ledger.jsonl is written in your project. Load it above to see it here.</p>
+      <p class="after">Free. Runs on your machine. Zero dependencies, plain JavaScript you can read first: <a href="https://github.com/jacekimmy/akeso-check">github.com/jacekimmy/akeso-check</a></p>
+    </div>` : "";
 
-  const shell = `<div class="app">
-  <nav class="rail">
-    <div class="brand"><b>Akeso</b><span>${hosted ? "dashboard" : "on your computer"}</span></div>
-    <a href="#overview" data-view="overview">Overview</a>
-    <div class="group">The loop</div>
-    <a href="#check" data-view="check"><span class="dot" id="dot-check"></span>Check</a>
-    <a href="#fix" data-view="fix"><span class="dot" id="dot-fix"></span>Fix</a>
-    <a href="#monitor" data-view="monitor"><span class="dot" id="dot-monitor"></span>Monitor</a>
-    <div class="group">For you</div>
-    <a href="#approvals" data-view="approvals">Approvals<span class="count" id="count-approvals"></span></a>
-    <a href="#receipts" data-view="receipts">Receipts</a>
-    <a href="#ledger" data-view="ledger">Ledger<span class="count" id="count-ledger"></span></a>
-    <div class="foot">${hosted ? "No account. No server. The ledger you load never leaves this browser." : escapeHtml(root ? `Read from ${root}/.akeso/ledger.jsonl` : "Read from .akeso/ledger.jsonl")}<br>Every action is a command; this page names it.</div>
-  </nav>
-  <main class="ws">
-    <div class="top"><span class="crumb"><b id="crumbApp"></b> &nbsp;/&nbsp; <span id="crumbView">Overview</span></span><span class="seal mono" id="seal"></span></div>
+  const table = (id) => `<div class="group"><table><thead><tr><th>Account</th><th>Stripe says</th><th>App says</th><th class="hide-s">Meaning</th><th class="num">List price</th></tr></thead><tbody id="${id}"></tbody></table></div>`;
+
+  const shell = `<header class="nav"><div class="wrap">
+    <span class="brand">Akeso</span>
+    <nav>
+      <a href="#overview" data-view="overview">Overview</a>
+      <a href="#check" data-view="check">Check</a>
+      <a href="#fix" data-view="fix">Fix</a>
+      <a href="#monitor" data-view="monitor">Monitor</a>
+      <a href="#approvals" data-view="approvals">Approvals<span class="n" id="count-approvals"></span></a>
+      <a href="#receipts" data-view="receipts">Receipts</a>
+      <a href="#ledger" data-view="ledger">Ledger<span class="n" id="count-ledger"></span></a>
+    </nav>
+    <span class="seal" id="seal"></span>
+  </div></header>
+  <main class="wrap">
     ${runPanel}
 
     <section class="view on" id="v-overview">
-      <h1 class="verdict serif" id="verdict"></h1>
-      <p class="why" id="why"></p>
-      <div id="next"></div>
-      <div class="cols">
-        <div>
-          <div class="h"><h2>Accounts</h2><span class="n" id="accountsN"></span><span class="r mono" id="accountsWhen"></span></div>
-          <table><thead><tr><th>Account</th><th>Stripe says</th><th></th><th>App says</th><th>Meaning</th><th class="num">List price</th></tr></thead><tbody id="accounts"></tbody></table>
-        </div>
-        <aside class="inbox">
-          <div class="h"><h2>Waiting for you</h2></div>
-          <div id="inbox"></div>
-          <div class="h" style="margin-top:26px"><h2>Receipts</h2></div>
-          <div class="fig"><span class="l">Access restored</span><span class="v mono" id="rRestored"></span></div>
-          <p class="note" id="rVerified"></p>
-          <div class="fig"><span class="l">Access removed</span><span class="v mono" id="rRemoved"></span></div>
-          <div class="fig"><span class="l">Exposure, per sweep</span><span class="v mono" id="rExposure"></span></div>
-          <div class="fig total"><span class="l">Revenue recovered</span><span class="v mono">not measured</span></div>
-          <p class="note">Akeso does not see your payouts, so it will not put a number here.</p>
-        </aside>
-      </div>
-      <p class="rule-line">Akeso restores access on its own. It never removes access on its own.</p>
+      <p class="app"><span class="appName"></span><span class="seal2" id="seal2"></span></p>
+      <h1 id="verdict"></h1>
+      <p class="lead" id="lead"></p>
+      <div class="cmd" id="next"></div>
+
+      <div class="label">The loop</div>
+      <div class="group" id="loop"></div>
+
+      <div class="label">Waiting for you</div>
+      <div class="group" id="inbox"></div>
+
+      <div class="label">Accounts that disagree<span class="r"><span id="accountsN"></span> &nbsp; <span id="accountsWhen"></span></span></div>
+      ${table("accounts")}
+
+      <div class="label">Receipts</div>
+      <div class="group" id="receipts"></div>
+
+      <p class="foot">Akeso restores access on its own. It never removes access on its own.</p>
     </section>
 
     <section class="view" id="v-check">
-      <div class="h"><h2>The ten billing situations</h2><span class="r mono" id="checkMeta"></span></div>
-      <table><thead><tr><th>Scenario</th><th>Outcome</th></tr></thead><tbody id="scenarios"></tbody></table>
+      <p class="app appName"></p>
+      <h1>Check</h1>
+      <div class="label">The ten billing situations<span class="r" id="checkMeta"></span></div>
+      <div class="group" id="scenarios"></div>
     </section>
 
     <section class="view" id="v-fix">
-      <div class="h"><h2>What the fix wrote</h2><span class="r mono" id="fixMeta"></span></div>
-      <table><thead><tr><th>Action</th><th>File</th></tr></thead><tbody id="files"></tbody></table>
-      <p class="note" id="fixProof"></p>
+      <p class="app appName"></p>
+      <h1>Fix</h1>
+      <div class="label">What the fix wrote<span class="r" id="fixMeta"></span></div>
+      <div class="group" id="files"></div>
+      <p class="foot" id="fixProof"></p>
     </section>
 
     <section class="view" id="v-monitor">
-      <div class="h"><h2>Sweeps</h2></div>
-      <table><thead><tr><th>When</th><th>Result</th><th class="num">Compared</th><th class="num">Exposure</th></tr></thead><tbody id="sweeps"></tbody></table>
-      <p class="note" id="coverage"></p>
+      <p class="app appName"></p>
+      <h1>Monitor</h1>
+      <div class="label">Sweeps</div>
+      <div class="group" id="sweeps"></div>
+      <div class="label">Every account, last sweep</div>
+      ${table("allAccounts")}
+      <p class="foot" id="coverage"></p>
     </section>
 
     <section class="view" id="v-approvals">
-      <div class="h"><h2>Removals waiting for your yes</h2></div>
-      <table><thead><tr><th>Account</th><th>Why</th><th class="num">List price</th><th>State</th><th>Decide</th></tr></thead><tbody id="queue"></tbody></table>
-      <p class="rule-line">Akeso never removes access on its own. Nothing above has happened.</p>
+      <p class="app appName"></p>
+      <h1>Approvals</h1>
+      <div class="label">Removals waiting for your yes</div>
+      <div class="group" id="queue"></div>
+      <p class="foot">Akeso never removes access on its own. Nothing above has happened.</p>
     </section>
 
     <section class="view" id="v-receipts">
-      <div class="h"><h2>Every change Akeso made</h2></div>
-      <table><thead><tr><th>When</th><th>Account</th><th>Direction</th><th>Result</th></tr></thead><tbody id="restores"></tbody></table>
+      <p class="app appName"></p>
+      <h1>Receipts</h1>
+      <div class="label">Every change Akeso made</div>
+      <div class="group" id="restores"></div>
     </section>
 
     <section class="view" id="v-ledger">
-      <div class="h"><h2>The ledger, as written</h2></div>
-      <table><thead><tr><th>#</th><th>When</th><th>Kind</th><th>Summary</th></tr></thead><tbody id="entries"></tbody></table>
-      <p class="note">Append-only and hash-chained. The seal at the top recomputes every hash in this browser; an entry edited after the fact breaks it.</p>
+      <p class="app appName"></p>
+      <h1>Ledger</h1>
+      <div class="label">As written${hosted ? "" : escapeHtml(root ? `, ${root}/.akeso/ledger.jsonl` : ", .akeso/ledger.jsonl")}</div>
+      <div class="group" id="entries"></div>
+      <p class="foot">Append-only and hash-chained. The seal at the top recomputes every hash in this browser; an entry edited after the fact breaks it.</p>
     </section>
-  </main>
-</div>`;
+  </main>`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Akeso · ${escapeHtml(appName)}</title>
-${fonts}
 <style>${CSS}</style>
 </head><body>
 ${shell}
