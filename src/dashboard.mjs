@@ -79,8 +79,12 @@ const CSS = `
   .view { display:none; padding:36px 0 72px; }
   .view.on { display:block; }
   .app { margin:0; font-size:13px; color:var(--ink2); }
-  h1 { margin:4px 0 0; font-size:32px; line-height:1.15; font-weight:600; letter-spacing:-.022em; max-width:22ch; text-wrap:balance; }
-  .lead { margin:8px 0 0; color:var(--ink2); max-width:56ch; }
+  .hero { display:flex; align-items:center; gap:18px; margin-top:10px; }
+  .mark { width:56px; height:56px; border-radius:16px; flex:none; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:600; letter-spacing:-.02em; color:#fff; background:var(--ink3); }
+  .mark.ok { background:var(--ok); } .mark.bad { background:var(--bad); } .mark.wait { background:var(--wait); }
+  .mark svg { width:28px; height:28px; }
+  h1 { margin:0; font-size:32px; line-height:1.15; font-weight:600; letter-spacing:-.022em; max-width:22ch; text-wrap:balance; }
+  .lead { margin:12px 0 0; color:var(--ink2); max-width:56ch; }
   .cmd { display:flex; align-items:center; gap:10px; margin:18px 0 0; color:var(--ink2); flex-wrap:wrap; }
   .cmd code { color:var(--ink); }
   .cmd button, button.link { border:0; background:none; font:inherit; font-size:13px; color:var(--link); cursor:pointer; padding:6px 8px; margin:-6px -8px; border-radius:6px; }
@@ -89,6 +93,22 @@ const CSS = `
   h2.label .r { margin-left:auto; color:var(--ink3); font-size:12px; }
   .group { background:var(--group); border-radius:12px; overflow:hidden; margin-top:8px; }
   .group.first { margin-top:30px; }
+  .loop { display:grid; grid-template-columns:1fr 1fr 1fr; padding:20px 18px 18px; }
+  .loop a { display:block; min-width:0; }
+  .loop .m { display:flex; align-items:center; height:26px; margin-bottom:12px; }
+  .loop .c { width:26px; height:26px; border-radius:50%; flex:none; border:2px solid var(--line); display:flex; align-items:center; justify-content:center; color:#fff; background:transparent; }
+  .loop .c svg { width:14px; height:14px; }
+  .loop .c.ok { background:var(--ok); border-color:var(--ok); } .loop .c.bad { background:var(--bad); border-color:var(--bad); } .loop .c.wait { background:var(--wait); border-color:var(--wait); }
+  .loop .c.next { border-color:var(--ink); border-style:dashed; }
+  .loop .l { flex:1; height:2px; background:var(--line); margin:0 8px; }
+  .loop .l.ok { background:var(--ok); }
+  .loop .name { font-weight:600; font-size:15px; }
+  .loop .val { font-size:13px; color:var(--ink2); margin-top:1px; }
+  .loop .val.ink { color:var(--ink); }
+  .loop .val .sub { display:block; color:var(--ink2); }
+  .loop a.todo .name { color:var(--ink2); font-weight:400; }
+  .row .v .big { font-size:17px; color:var(--ink); } .row .v .big.wait { color:var(--wait); }
+  .row .v.wait, .row .v .wait { color:var(--wait); }
   .row { display:flex; align-items:center; gap:14px; padding:12px 18px; min-height:46px; }
   .row + .row { border-top:1px solid var(--line); }
   .row .k { flex:1; min-width:0; }
@@ -119,6 +139,8 @@ const CSS = `
   @media (max-width:600px) {
     .wrap { padding:0 16px; }
     h1 { font-size:26px; }
+    .mark { width:44px; height:44px; border-radius:13px; font-size:21px; } .mark svg { width:22px; height:22px; }
+    .loop { padding:16px 14px 14px; } .loop .name { font-size:14px; } .loop .val { font-size:12px; }
     .nav nav { mask-image:linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image:linear-gradient(90deg, #000 85%, transparent); }
     h2.label { padding:0 14px; } .row { padding:12px 14px; }
     th:first-child, td:first-child { padding-left:14px; } th:last-child, td:last-child { padding-right:14px; }
@@ -148,6 +170,9 @@ const JS = String.raw`
     return href ? '<a class="row ' + cls + '" href="' + href + '">' + inner + "</a>" : '<div class="row ' + cls + '">' + inner + "</div>";
   }
   function cmdRow(c) { return '<div class="row cmdrow"><span class="k"><code>' + esc(c) + '</code></span><button class="link" data-copy="' + esc(c) + '">Copy</button></div>'; }
+  var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var CROSS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+  var DASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M7 12h10"/></svg>';
   function empty(text) { return '<div class="row empty">' + esc(text) + "</div>"; }
 
   function render() {
@@ -201,27 +226,33 @@ const JS = String.raw`
     var states = {
       check: ranLive ? "done" : check ? "partial" : "todo",
       fix: provenFix ? "done" : (fix && !passing) ? "failed" : fix ? "partial" : (ranLive && !passing) ? "next" : (ranLive && passing) ? "notneeded" : "todo",
-      monitor: (sweep && !sweep.couldNotRun && matched > 0) ? "done" : sweep ? "failed" : (passing || provenFix) ? "next" : "todo"
+      monitor: (sweep && !sweep.couldNotRun && matched > 0) ? "done" : (sweep && !sweep.couldNotRun) ? "nothing" : sweep ? "failed" : (passing || provenFix) ? "next" : "todo"
+    };
+    var circle = {
+      check: states.check === "done" ? (passing ? "ok" : grade === "?" ? "" : "bad") : states.check === "partial" ? "wait" : "",
+      fix: states.fix === "done" ? "ok" : states.fix === "failed" ? "bad" : states.fix === "partial" ? "wait" : "",
+      monitor: states.monitor === "done" ? (stillWrong.length ? "wait" : "ok") : states.monitor === "failed" ? "bad" : ""
     };
     var DOT = { done: "ok", failed: "bad", partial: "wait", next: "", notneeded: "", todo: "" };
 
     /* ---- the next step: the same ladder as the terminal ---- */
     var step;
-    if (!check) step = { h: "Not checked yet.", w: "", c: "npx akeso-check" };
-    else if (!ranLive) step = { h: "Code read. Not yet run.", w: "Only the live Check, where a pretend customer pays and cancels, produces a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
-    else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "Fix applied. Check still fails.", w: "A fix counts only when the Check passes afterwards.", c: "npx akeso-check fix --show" } : { h: "Grade " + grade + ". " + failed + " of " + scenarios.length + " situations fail.", w: "Fix rewrites the webhook handler and the one file that touches your database, with backups.", c: "npx akeso-check fix" };
-    else if (grade === "?") step = { h: "The Check could not finish. No grade.", w: "The run failed, not your app. Start the app and run it again.", c: "npx akeso-check --lifecycle-url http://localhost:3000" };
-    else if (sweep && sweep.couldNotRun) step = { h: "The last sweep could not run.", w: String(sweep.couldNotRun).replace(/\s+/g, " ").trim(), c: "npx akeso-check monitor" };
-    else if (sweep && matched === 0) step = { h: "No account could be compared.", w: "Stripe and your app use different customer ids, so nothing lines up. Pass your account id to Stripe as client_reference_id at checkout, then sweep again.", c: "npx akeso-check monitor" };
-    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your approval.", w: "", c: "npx akeso-check approvals" };
-    else if (sweep) step = stillWrong.length === 0 ? { h: "Stripe and your app agree.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement" } : { h: plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.", w: "", c: "npx akeso-check monitor" };
-    else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Accounts that drifted before the fix are still wrong. Monitor compares them with Stripe.", c: "npx akeso-check monitor" };
+    if (!check) step = { h: "Not checked yet.", w: "", c: "npx akeso-check", m: DASH, tone: "" };
+    else if (!ranLive) step = { h: "Code read. Not yet run.", w: "Only the live Check, where a pretend customer pays and cancels, produces a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: DASH, tone: "" };
+    else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "Fix applied. Check still fails.", w: "A fix counts only when the Check passes afterwards.", c: "npx akeso-check fix --show", m: esc(grade), tone: "bad" } : { h: "Grade " + grade + ". " + failed + " of " + scenarios.length + " situations fail.", w: "Fix rewrites the webhook handler and the one file that touches your database, with backups.", c: "npx akeso-check fix", m: esc(grade), tone: "bad" };
+    else if (grade === "?") step = { h: "The Check could not finish. No grade.", w: "The run failed, not your app. Start the app and run it again.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: "?", tone: "" };
+    else if (sweep && sweep.couldNotRun) step = { h: "The last sweep could not run.", w: String(sweep.couldNotRun).replace(/\s+/g, " ").trim(), c: "npx akeso-check monitor", m: "?", tone: "" };
+    else if (sweep && matched === 0) step = { h: "No account could be compared.", w: "Stripe and your app use different customer ids, so nothing lines up. Pass your account id to Stripe as client_reference_id at checkout, then sweep again.", c: "npx akeso-check monitor", m: "?", tone: "" };
+    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your approval.", w: "", c: "npx akeso-check approvals", m: String(waiting.length), tone: "wait" };
+    else if (sweep) step = stillWrong.length === 0 ? { h: "Stripe and your app agree.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement", m: CHECK, tone: "ok" } : { h: plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.", w: "", c: "npx akeso-check monitor", m: String(stillWrong.length), tone: "wait" };
+    else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Accounts that drifted before the fix are still wrong. Monitor compares them with Stripe.", c: "npx akeso-check monitor", m: esc(grade), tone: "ok" };
 
     /* ---- render ---- */
     var app = D.appName || "Your app";
     document.querySelectorAll(".appName").forEach(function (n) { n.textContent = app; });
     document.title = "Akeso · " + app;
     $("verdict").textContent = step.h;
+    var mark = $("mark"); mark.className = "mark " + (step.tone || ""); mark.innerHTML = step.m;
     $("lead").textContent = step.w || "";
     $("lead").hidden = !step.w;
     $("next").innerHTML = step.c ? '<code>' + esc(step.c) + '</code><button data-copy="' + esc(step.c) + '">Copy</button>' : "";
@@ -233,15 +264,21 @@ const JS = String.raw`
     nl.parentNode.setAttribute("aria-label", L.length ? "Ledger, " + L.length + " entries" : "Ledger");
 
     /* the loop */
-    $("loop").innerHTML = [
-      row("", DOT[states.check], "Check", null, ranLive ? "Grade " + esc(grade || "?") : check ? "Read, not run" : "Not run", "#check"),
-      row("", DOT[states.fix], "Fix", null, provenFix ? plural((fix.files || []).length, "file", "files") + " · re-test passed" : (fix && !passing) ? "Applied · Check still fails" : fix ? "Applied · not re-tested" : states.fix === "notneeded" ? "Not needed" : states.fix === "next" ? "Next" : "Not yet", "#fix"),
-      row("", DOT[states.monitor], "Monitor", null, states.monitor === "done" ? matched + " compared · " + plural(stillWrong.length, "disagrees", "disagree") + (fixedNow.length ? " · " + fixedNow.length + " restored" : "") : sweep && sweep.couldNotRun ? "Could not run" : sweep ? "Nothing to compare" : states.monitor === "next" ? "Next" : "Not yet", "#monitor")
-    ].join("");
+    var ICONS = { ok: CHECK, bad: CROSS, wait: DASH };
+    function stepCell(id, name, state, val, ink, lastOne) {
+      var tone = circle[id]; var icon = ICONS[tone] || (state === "notneeded" || state === "nothing" ? DASH : "");
+      return '<a href="#' + id + '" class="' + (state === "todo" ? "todo" : "") + '"><div class="m"><span class="c ' + (tone || (state === "next" ? "next" : "")) + '" aria-hidden="true">' + icon + "</span>" + (lastOne ? "" : '<span class="l ' + (state === "done" || state === "notneeded" ? "ok" : "") + '"></span>') + '</div><div class="name">' + name + '</div><div class="val' + (ink ? " ink" : "") + '">' + val + "</div></a>";
+    }
+    var monVal = states.monitor === "done" ? (stillWrong.length ? plural(stillWrong.length, "disagrees", "disagree") : "All agree") : states.monitor === "failed" ? "Could not run" : states.monitor === "nothing" ? "Nothing to compare" : states.monitor === "next" ? "Next" : "Not yet";
+    var monSub = states.monitor === "done" ? matched + " compared" + (fixedNow.length ? " · " + fixedNow.length + " restored" : "") : "";
+    $("loop").innerHTML =
+      stepCell("check", "Check", states.check, ranLive ? "Grade " + esc(grade || "?") : check ? "Read, not run" : "Not run", ranLive, false) +
+      stepCell("fix", "Fix", states.fix, provenFix ? plural((fix.files || []).length, "file", "files") + " · re-test passed" : (fix && !passing) ? "Check still fails" : fix ? "Not re-tested" : states.fix === "notneeded" ? "Not needed" : states.fix === "next" ? "Next" : "Not yet", provenFix, false) +
+      stepCell("monitor", "Monitor", states.monitor, monVal + (monSub ? '<span class="sub">' + monSub + "</span>" : ""), states.monitor === "done", true);
 
     /* waiting for approval: the row and its command, together */
     function approvalRows(r) {
-      return row("", r.ready ? "wait" : "", '<span class="code">' + esc(r.account) + "</span>", esc(r.reason || "") + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + "/mo" : ""), r.ready ? "Ready to approve" : "Held until " + esc(when(r.readyAt))) +
+      return row("", r.ready ? "wait" : "", '<span class="code">' + esc(r.account) + "</span>", esc(r.reason || "") + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + "/mo" : ""), r.ready ? '<span class="wait">Ready to approve</span>' : "Held until " + esc(when(r.readyAt))) +
         cmdRow("npx akeso-check approvals --approve " + r.id);
     }
     $("inbox").innerHTML = waiting.length ? waiting.map(approvalRows).join("") : empty("No removals waiting.");
@@ -249,9 +286,9 @@ const JS = String.raw`
 
     /* totals */
     $("totals").innerHTML =
-      row("", null, "Access restored", unconfirmed.length ? unconfirmed.length + " not yet confirmed" : null, String(restored.length)) +
-      row("", null, "Access removed", null, String(removed.length)) +
-      row("", null, "Unpaid access", null, lastGood ? money(Number(lastGood.comparison.monthlyExposure) || 0) + "/mo" : "No sweep yet");
+      row("", null, "Access restored", unconfirmed.length ? unconfirmed.length + " not yet confirmed" : null, '<span class="big">' + restored.length + "</span>") +
+      row("", null, "Access removed", null, '<span class="big">' + removed.length + "</span>") +
+      row("", null, "Unpaid access", null, lastGood ? '<span class="big' + ((Number(lastGood.comparison.monthlyExposure) || 0) > 0 ? " wait" : "") + '">' + money(Number(lastGood.comparison.monthlyExposure) || 0) + "/mo</span>" : "No sweep yet");
 
     /* accounts, on Monitor */
     function stripeWord(a) { return a.stripe == null ? "No subscription" : a.stripe === "incomplete_expired" ? "Expired" : cap(a.stripe); }
@@ -314,9 +351,9 @@ const JS = String.raw`
           if (h !== e.hash) { broken = e.seq || i + 1; break; }
           prev = e.hash;
         }
-        setSeal(broken ? "Entry " + broken + " does not verify" : L.length + " entries · verified", !!broken);
+        setSeal(broken ? "Entry " + broken + " does not verify" : plural(L.length, "entry", "entries") + " · verified", !!broken);
       })();
-    } else if (L.length) { setSeal(L.length + " entries · not verified", false); }
+    } else if (L.length) { setSeal(plural(L.length, "entry", "entries") + " · not verified", false); }
 
     /* site only: load a ledger file, run panel */
     var file = $("ledgerFile"); if (file) file.addEventListener("change", function () {
@@ -389,11 +426,11 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
 
     <section class="view on" id="v-overview">
       ${eyebrow}
-      <h1 id="verdict"></h1>
+      <div class="hero"><div class="mark" id="mark" aria-hidden="true"></div><h1 id="verdict"></h1></div>
       <p class="lead" id="lead"></p>
       <div class="cmd" id="next"></div>
 
-      <div class="group first" id="loop"></div>
+      <div class="group first loop" id="loop"></div>
 
       <h2 class="label">Waiting for your approval</h2>
       <div class="group" id="inbox"></div>
