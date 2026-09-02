@@ -66,9 +66,9 @@ test("revenue recovered is never a figure, and the rule is on every copy", () =>
 
 test("it is one page: verdict, loop, approvals, settings, receipts, and the truth table", () => {
   const html = renderDashboard({ ledger: [], appName: "demo" });
-  for (const id of ["ring", "verdict", "next", "loop", "compare", "inbox", "figures", "bound", "timeline"]) assert.ok(html.includes(`id="${id}"`), id);
+  for (const id of ["sStatus", "sLoop", "compare", "inbox", "figures", "bound", "timeline"]) assert.ok(html.includes(`id="${id}"`), id);
   assert.ok(!html.includes("data-view="), "no tabs: the master doc allows one page");
-  assert.ok(html.includes("Stripe says") && html.includes("App says"), "the truth table is still there");
+  assert.ok(html.includes("Stripe: ") && html.includes("App: "), "the two sides are still compared, account by account");
 });
 
 test("a stranger on the hosted copy sees step one, and the demo only behind a link", () => {
