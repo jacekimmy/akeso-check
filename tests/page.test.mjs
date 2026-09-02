@@ -36,7 +36,7 @@ test("the ledger travels embedded, byte for byte", async () => {
   await appendEntry(root, { kind: "check", grade: "F", lifecycleGrade: "F", findings: [], scenarioResults: [{ id: "immediate-cancel", outcome: "fail" }] });
   const ledger = await readLedger(root);
   const html = renderDashboard({ ledger, appName: "demo" });
-  const embedded = JSON.parse(html.match(/window\.AKESO = (\{.*?\});\s*window\.AKESO\.shell/s)[1]);
+  const embedded = JSON.parse(html.match(/window\.AKESO = (\{.*?\});<\/script>/s)[1]);
   assert.deepEqual(embedded.ledger, ledger, "the browser folds exactly what the file holds");
   assert.equal(embedded.scenarioNames["immediate-cancel"], "Customer cancels immediately: access ends");
 });
@@ -64,13 +64,22 @@ test("revenue recovered is never a figure, and the rule is on every copy", () =>
   assert.match(html, /never removes access on its own/);
 });
 
-test("the views a founder needs all exist, as navigation", () => {
+test("it is one page: verdict, loop, approvals, settings, receipts, and the truth table", () => {
   const html = renderDashboard({ ledger: [], appName: "demo" });
-  for (const view of ["overview", "check", "fix", "monitor", "approvals", "receipts", "ledger"]) {
-    assert.ok(html.includes(`id="v-${view}"`), `view ${view}`);
-    assert.ok(html.includes(`data-view="${view}"`), `nav ${view}`);
-  }
-  assert.ok(html.includes("Stripe says") && html.includes("App says"), "the truth table is the centrepiece");
+  for (const id of ["mark", "verdict", "next", "loop", "details", "inbox", "settings", "totals", "history"]) assert.ok(html.includes(`id="${id}"`), id);
+  assert.ok(!html.includes("data-view="), "no tabs: the master doc allows one page");
+  assert.ok(html.includes("Stripe says") && html.includes("App says"), "the truth table is still there");
+});
+
+test("a stranger on the hosted copy sees step one, and the demo only behind a link", () => {
+  const html = renderDashboard({ ledger: [{ kind: "check", seq: 1, hash: "h", grade: "F" }], appName: "watch-this", hosted: true, demo: true });
+  const embedded = JSON.parse(html.match(/window\.AKESO = (\{.*?\});<\/script>/s)[1]);
+  assert.equal(embedded.onboarding, true);
+  assert.deepEqual(embedded.ledger, [], "nothing is folded until they load or ask for the demo");
+  assert.equal(embedded.demoLedger.length, 1);
+  assert.ok(html.includes('id="start"') && html.includes('id="demoLink"'));
+  const local = renderDashboard({ ledger: [], appName: "mine" });
+  assert.ok(!local.includes('id="start"'), "the local page never onboards; it has its ledger");
 });
 
 test("the inline script parses, so a bad quote cannot blank the whole page", async () => {
@@ -79,4 +88,12 @@ test("the inline script parses, so a bad quote cannot blank the whole page", asy
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
   assert.equal(scripts.length, 2);
   for (const src of scripts) new vm.Script(src);
+});
+
+test("the local page renders without the hosted-only elements", async () => {
+  /* The hosted copy has a start section; the local page does not. A script
+     that assumes either one blanks the whole page for the other. */
+  const html = renderDashboard({ ledger: [], appName: "mine" });
+  const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.ok(!/\$\("start"\)\.hidden/.test(script[1]), "start is guarded");
 });
