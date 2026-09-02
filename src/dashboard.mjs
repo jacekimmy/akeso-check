@@ -4,14 +4,17 @@
  * `page` command) or loaded in the browser (the hosted copy). Nothing is
  * uploaded, so the privacy promise holds even for the hosted copy.
  *
- * It is one page, not a set of tabs, because the master doc allows exactly
- * one: status, what waits for a human, settings, receipts. A stranger on the
- * hosted copy sees step one (paste the command) and nothing else until they
- * load the ledger the command writes; then the page becomes their app's.
- * The demo sits behind a link and says so while it is showing.
+ * Design: wide and unhurried, one warm surface, one calm accent, and every
+ * visual element drawn from the data so it means something. The ring beside
+ * the verdict is the state. The ten situations are ten tiles. The accounts
+ * are a strip of dots, one per account, coloured by whether Stripe and the
+ * app agree. The receipts are three large numbers. The boundary diagram
+ * shows what Akeso can and cannot touch, which is the feeling of control the
+ * page exists to give. The ledger is a timeline with a seal.
  *
- * Every screen state opens with the same two things: a state mark and one
- * sentence. Detail lives behind disclosures. Every fact appears once.
+ * A stranger on the hosted copy sees step one (paste the command) and
+ * nothing else until they load the ledger the command writes. The demo sits
+ * behind a link and says so while it is showing.
  *
  * Doctrine carries into the browser unchanged: a step is lit only when it
  * executed, no number is invented, revenue recovered is never a figure, the
@@ -38,122 +41,174 @@ const SCENARIO_NAMES = {
 
 const CSS = `
   :root {
-    --bg:#f5f5f7; --group:#ffffff; --ink:#1d1d1f; --ink2:#6e6e73; --ink3:#86868b; --line:#e8e8ed;
-    --ok:#34c759; --bad:#ff3b30; --wait:#ff9f0a; --link:#0066cc;
+    --bg:#f6f5f1; --card:#ffffff; --ink:#17191d; --ink2:#5d636c; --ink3:#8a9099; --line:#e6e4dd; --tint:#eef4f1;
+    --ok:#1e9a6a; --okSoft:#d7f0e4; --bad:#e5484d; --badSoft:#fbdcdd; --wait:#e0961a; --waitSoft:#fbecd0; --none:#c9cdd3; --link:#2f6fed;
+    --shadow:0 1px 2px rgba(20,24,30,.04), 0 14px 40px -18px rgba(20,24,30,.14);
   }
   @media (prefers-color-scheme: dark) { :root {
-    --bg:#000000; --group:#1c1c1e; --ink:#f5f5f7; --ink2:#a1a1a6; --ink3:#8e8e93; --line:#2c2c2e;
-    --ok:#30d158; --bad:#ff453a; --wait:#ff9f0a; --link:#2997ff;
+    --bg:#0f1114; --card:#181b20; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --line:#272b31; --tint:#182420;
+    --ok:#3ccf8e; --okSoft:#123b2c; --bad:#ff6b6f; --badSoft:#4a1e21; --wait:#f0b13c; --waitSoft:#4a3413; --none:#3a3f47; --link:#6ea0ff;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 14px 40px -18px rgba(0,0,0,.6);
   } }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.47 -apple-system, "SF Pro Text", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, "SF Pro Text", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
   a { color:inherit; text-decoration:none; }
-  code, .code { font-family:ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; font-size:13px; }
-  :focus-visible { outline:2px solid var(--link); outline-offset:2px; border-radius:6px; }
+  code, .code { font-family:ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; font-size:.92em; }
+  :focus-visible { outline:2px solid var(--link); outline-offset:3px; border-radius:8px; }
   ::selection { background:color-mix(in srgb, var(--link) 22%, transparent); }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
-  .wrap { max-width:720px; margin:0 auto; padding:0 24px; }
   [hidden] { display:none !important; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 40px; }
+  button.link, a.link, label.link { border:0; background:none; font:inherit; color:var(--link); cursor:pointer; padding:0; font-weight:500; }
 
-  .nav { position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px); border-bottom:1px solid var(--line); }
-  .nav .wrap { display:flex; align-items:center; gap:18px; height:48px; }
-  .nav .brand { font-weight:600; letter-spacing:-.01em; }
-  .nav .acts { margin-left:auto; display:flex; gap:14px; align-items:center; font-size:13px; white-space:nowrap; }
-  .nav .acts button, .nav .acts label, .nav .acts a { color:var(--link); cursor:pointer; border:0; background:none; font:inherit; padding:0; }
+  .nav { position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter:saturate(180%) blur(18px); -webkit-backdrop-filter:saturate(180%) blur(18px); }
+  .nav .wrap { display:flex; align-items:center; gap:22px; height:64px; }
+  .nav .brand { font-weight:700; letter-spacing:-.02em; font-size:17px; display:flex; align-items:center; gap:10px; }
+  .nav .brand i { width:12px; height:12px; border-radius:50%; background:var(--ok); display:inline-block; }
+  .nav .acts { margin-left:auto; display:flex; gap:22px; align-items:center; font-size:14px; white-space:nowrap; }
   .nav .acts .status { color:var(--ink2); } .nav .acts .status.bad { color:var(--bad); }
-  .nav .seal { font-size:12px; color:var(--ink2); white-space:nowrap; display:flex; align-items:center; gap:7px; }
-  .nav .seal::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--ok); }
-  .nav .seal.bad { color:var(--bad); } .nav .seal.bad::before { background:var(--bad); }
-  .nav .seal.none::before { background:var(--ink3); }
+  .seal { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--ink2); padding:6px 12px 6px 8px; border-radius:999px; background:var(--card); box-shadow:var(--shadow); }
+  .seal::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--ok); }
+  .seal.bad { color:var(--bad); } .seal.bad::before { background:var(--bad); }
+  .seal.none::before { background:var(--none); }
 
-  main { padding:34px 0 72px; }
-  .app { margin:0; font-size:13px; color:var(--ink2); }
-  .hero { display:flex; align-items:center; gap:18px; margin-top:10px; }
-  .mark { width:56px; height:56px; border-radius:16px; flex:none; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:600; letter-spacing:-.02em; color:#fff; background:var(--ink3); }
-  .mark.ok { background:var(--ok); } .mark.bad { background:var(--bad); } .mark.wait { background:var(--wait); }
-  .mark svg { width:28px; height:28px; }
-  h1 { margin:0; font-size:32px; line-height:1.15; font-weight:600; letter-spacing:-.022em; max-width:22ch; text-wrap:balance; }
-  .lead { margin:12px 0 0; color:var(--ink2); max-width:56ch; }
-  .cmd { display:flex; align-items:center; gap:10px; margin:18px 0 0; color:var(--ink2); flex-wrap:wrap; }
-  .cmd code { color:var(--ink); }
-  .cmd button, button.link { border:0; background:none; font:inherit; font-size:13px; color:var(--link); cursor:pointer; padding:6px 8px; margin:-6px -8px; border-radius:6px; }
+  main { padding:56px 0 120px; }
+  section + section { margin-top:88px; }
+  .eyebrow { margin:0 0 14px; font-size:14px; color:var(--ink2); letter-spacing:.01em; }
+  .hero { display:grid; grid-template-columns:1fr 220px; gap:56px; align-items:center; }
+  h1 { margin:0; font-size:48px; line-height:1.08; font-weight:700; letter-spacing:-.03em; max-width:18ch; text-wrap:balance; }
+  .lead { margin:18px 0 0; color:var(--ink2); font-size:18px; max-width:52ch; line-height:1.5; }
+  .cmd { display:inline-flex; align-items:center; gap:16px; margin:28px 0 0; padding:14px 18px; border-radius:14px; background:var(--card); box-shadow:var(--shadow); font-size:15px; }
+  .cmd code { font-size:15px; }
+  .cmd code::before { content:"$ "; color:var(--ink3); }
+  .ring { position:relative; width:220px; height:220px; }
+  .ring svg { width:100%; height:100%; transform:rotate(-90deg); }
+  .ring circle { fill:none; stroke-width:12; stroke-linecap:round; }
+  .ring .track { stroke:var(--line); }
+  .ring .arc { stroke:var(--none); stroke-dasharray:var(--arc, 0) 1000; transition:stroke-dasharray .6s ease; }
+  .ring.ok .arc { stroke:var(--ok); } .ring.bad .arc { stroke:var(--bad); } .ring.wait .arc { stroke:var(--wait); }
+  .ring .center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:64px; font-weight:700; letter-spacing:-.04em; line-height:1; }
+  .ring .center svg { width:64px; height:64px; transform:none; }
+  .ring .center small { font-size:13px; font-weight:500; color:var(--ink2); letter-spacing:0; margin-top:8px; }
+  .ring.ok .center { color:var(--ok); } .ring.bad .center { color:var(--bad); } .ring.wait .center { color:var(--wait); } .ring.none .center { color:var(--ink3); }
 
-  h2 { margin:38px 0 8px; padding:0 18px; font-size:13px; font-weight:400; color:var(--ink2); display:flex; gap:12px; align-items:baseline; }
-  h2 .r { margin-left:auto; color:var(--ink3); font-size:12px; }
-  .group { background:var(--group); border-radius:12px; overflow:hidden; margin-top:8px; }
-  .group.first { margin-top:30px; }
-  .row { display:flex; align-items:center; gap:14px; padding:12px 18px; min-height:46px; }
-  .row + .row, details + .row, .row + details, details + details { border-top:1px solid var(--line); }
-  .row .k { flex:1; min-width:0; }
-  .row .sub { display:block; font-size:13px; color:var(--ink2); }
-  .row .v { color:var(--ink2); text-align:right; white-space:nowrap; }
-  .row .v .wait { color:var(--wait); } .row .v .big { font-size:17px; color:var(--ink); } .row .v .big.wait { color:var(--wait); }
-  .row .chev { color:var(--ink3); font-size:18px; line-height:1; transition:transform .15s; }
-  .row.empty { color:var(--ink2); }
-  .row.cmdrow .k { overflow-wrap:anywhere; }
-  .row .n { display:inline-flex; width:22px; height:22px; border-radius:50%; align-items:center; justify-content:center; background:var(--ink); color:var(--group); font-size:12px; font-weight:600; flex:none; }
-  a.row:hover, a.row:focus-visible { background:color-mix(in srgb, var(--ink) 3%, var(--group)); outline-offset:-2px; }
-  details summary { list-style:none; cursor:pointer; }
-  details summary::-webkit-details-marker { display:none; }
-  details[open] summary .chev { transform:rotate(90deg); }
-  details .inner { border-top:1px solid var(--line); background:color-mix(in srgb, var(--ink) 2%, var(--group)); }
-  details .inner .row { padding-left:18px; }
-  .dot { width:9px; height:9px; border-radius:50%; flex:none; background:transparent; border:1.5px solid var(--ink3); }
-  .dot.ok { background:var(--ok); border-color:var(--ok); } .dot.bad { background:var(--bad); border-color:var(--bad); } .dot.wait { background:var(--wait); border-color:var(--wait); }
+  h2 { margin:0 0 22px; font-size:15px; font-weight:600; color:var(--ink2); letter-spacing:.01em; display:flex; align-items:baseline; gap:14px; }
+  h2 .r { margin-left:auto; font-weight:400; font-size:13px; color:var(--ink3); }
+  .card { background:var(--card); border-radius:22px; box-shadow:var(--shadow); padding:28px; }
 
-  .loop { display:grid; grid-template-columns:1fr 1fr 1fr; padding:20px 18px 18px; }
-  .loop a { display:block; min-width:0; }
-  .loop .m { display:flex; align-items:center; height:26px; margin-bottom:12px; }
-  .loop .c { width:26px; height:26px; border-radius:50%; flex:none; border:2px solid var(--line); display:flex; align-items:center; justify-content:center; color:#fff; }
-  .loop .c svg { width:14px; height:14px; }
-  .loop .c.ok { background:var(--ok); border-color:var(--ok); } .loop .c.bad { background:var(--bad); border-color:var(--bad); } .loop .c.wait { background:var(--wait); border-color:var(--wait); }
-  .loop .c.next { border-color:var(--ink); border-style:dashed; }
-  .loop .l { flex:1; height:2px; background:var(--line); margin:0 8px; }
-  .loop .l.ok { background:var(--ok); }
-  .loop .name { font-weight:600; font-size:15px; }
-  .loop .val { font-size:13px; color:var(--ink2); margin-top:1px; }
-  .loop .val.ink { color:var(--ink); }
-  .loop .val .sub { display:block; color:var(--ink2); }
-  .loop a.todo .name { color:var(--ink2); font-weight:400; }
+  /* the loop: three cards joined by a line */
+  .loop { display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; position:relative; }
+  .loop::before { content:""; position:absolute; left:8%; right:8%; top:52px; height:2px; background:var(--line); z-index:0; }
+  .loop .step { position:relative; z-index:1; display:flex; flex-direction:column; gap:18px; min-height:250px; }
+  .step .head { display:flex; align-items:center; gap:12px; }
+  .step .node { width:48px; height:48px; border-radius:50%; background:var(--card); border:2px solid var(--line); display:flex; align-items:center; justify-content:center; color:#fff; flex:none; }
+  .step .node svg { width:22px; height:22px; }
+  .step .node.ok { background:var(--ok); border-color:var(--ok); } .step .node.bad { background:var(--bad); border-color:var(--bad); } .step .node.wait { background:var(--wait); border-color:var(--wait); }
+  .step .node.next { border-color:var(--ink); border-style:dashed; color:var(--ink); }
+  .step .title { font-size:22px; font-weight:700; letter-spacing:-.02em; }
+  .step .state { font-size:14px; color:var(--ink2); }
+  .step .vis { flex:1; display:flex; align-items:center; min-height:64px; }
+  .step .more { font-size:14px; color:var(--link); font-weight:500; cursor:pointer; list-style:none; }
+  .step .more::-webkit-details-marker { display:none; }
+  .step details[open] .more { color:var(--ink2); }
+  .tiles { display:grid; grid-template-columns:repeat(5, 30px); gap:8px; }
+  .tile { width:30px; height:30px; border-radius:8px; background:var(--none); }
+  .tile.ok { background:var(--ok); } .tile.bad { background:var(--bad); } .tile.none { background:var(--none); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { font-family:ui-monospace, "SF Mono", Menlo, monospace; font-size:12px; padding:6px 10px; border-radius:8px; background:var(--tint); color:var(--ink); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip.replaced { background:var(--waitSoft); } .chip.created { background:var(--okSoft); }
+  .dots { display:flex; flex-wrap:wrap; gap:6px; align-content:flex-start; }
+  .dots i { width:12px; height:12px; border-radius:50%; background:var(--ok); display:block; }
+  .dots i.bad { background:var(--bad); } .dots i.wait { background:var(--wait); } .dots i.none { background:var(--none); } .dots i.more { width:auto; height:auto; border-radius:0; background:none; font-style:normal; font-size:12px; color:var(--ink2); line-height:12px; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--ink2); margin-top:4px; }
+  .legend i { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:6px; background:var(--ok); }
+  .legend i.bad { background:var(--bad); } .legend i.wait { background:var(--wait); } .legend i.none { background:var(--none); }
+  .list { margin:12px 0 0; padding:0; list-style:none; font-size:14px; }
+  .list li { display:flex; gap:12px; padding:9px 0; border-top:1px solid var(--line); align-items:baseline; }
+  .list li span:first-child { flex:1; }
+  .list li b { font-weight:500; color:var(--ink2); }
+  .list li.ok b { color:var(--ok); } .list li.bad b { color:var(--bad); }
 
-  table { width:100%; border-collapse:collapse; }
-  th { text-align:left; font-weight:400; font-size:12px; color:var(--ink2); padding:10px 0 8px; border-bottom:1px solid var(--line); }
-  th:first-child, td:first-child { padding-left:18px; }
-  th:last-child, td:last-child { padding-right:18px; }
-  td { padding:11px 12px 11px 0; border-bottom:1px solid var(--line); vertical-align:top; }
-  tr:last-child td { border-bottom:0; }
-  td.num, th.num { text-align:right; white-space:nowrap; }
-  td.mute { color:var(--ink2); width:100%; }
-  td:not(.mute), th:not(.mute) { white-space:nowrap; }
-  td[colspan] { white-space:normal; }
-  td .dot { display:inline-block; vertical-align:middle; margin-right:10px; }
-  td .sub { display:none; font-size:13px; color:var(--ink2); white-space:normal; }
-  .foot { margin:26px 18px 0; font-size:13px; color:var(--ink2); }
+  /* two sides */
+  .sides { display:grid; grid-template-columns:1.2fr 1fr; gap:24px; align-items:start; }
+  .compare { display:grid; grid-template-columns:1fr 32px 1fr; gap:10px 14px; align-items:center; }
+  .compare .side { padding:14px 16px; border-radius:14px; background:var(--tint); }
+  .compare .side.bad { background:var(--badSoft); } .compare .side.wait { background:var(--waitSoft); } .compare .side.ok { background:var(--okSoft); }
+  .compare .side small { display:block; font-size:12px; color:var(--ink2); margin-bottom:2px; }
+  .compare .side b { font-weight:600; }
+  .compare .tie { text-align:center; font-size:20px; color:var(--ink2); }
+  .compare .tie.bad { color:var(--bad); } .compare .tie.wait { color:var(--wait); } .compare .tie.ok { color:var(--ok); }
+  .compare .who { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:baseline; margin-top:10px; font-size:14px; color:var(--ink2); }
+  .compare .who:first-child { margin-top:0; }
+  .compare .who .code { color:var(--ink); font-size:14px; }
+  .approval { border-left:0; }
+  .approval .big { font-size:28px; font-weight:700; letter-spacing:-.02em; margin:0 0 6px; }
+  .approval .big.wait { color:var(--wait); }
+  .approval .why { color:var(--ink2); font-size:15px; margin:0 0 18px; }
+  .approval .cmd { margin:0; width:100%; justify-content:space-between; }
+  .approval + .approval { margin-top:16px; }
+  .quiet { color:var(--ink2); font-size:15px; }
 
-  .tabs { display:flex; gap:16px; font-size:13px; color:var(--ink2); padding:14px 18px 0; flex-wrap:wrap; }
+  /* receipts */
+  .figures { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; }
+  .figure .n { font-size:56px; font-weight:700; letter-spacing:-.04em; line-height:1; }
+  .figure .n.wait { color:var(--wait); } .figure .n.ok { color:var(--ok); }
+  .figure .l { margin-top:10px; font-size:15px; color:var(--ink2); }
+  .figure .s { margin-top:4px; font-size:13px; color:var(--ink3); }
+  .note { margin:18px 0 0; font-size:14px; color:var(--ink3); }
+
+  /* the boundary */
+  .bound { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; }
+  .bound .z { display:flex; flex-direction:column; gap:14px; }
+  .bound .glyph { width:44px; height:44px; border-radius:12px; background:var(--tint); display:flex; align-items:center; justify-content:center; color:var(--ink); }
+  .bound .glyph svg { width:22px; height:22px; }
+  .bound .t { font-size:18px; font-weight:700; letter-spacing:-.01em; }
+  .bound .d { font-size:14px; color:var(--ink2); line-height:1.5; }
+  .bound .s { font-size:14px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .bound .s i { width:9px; height:9px; border-radius:50%; background:var(--none); display:inline-block; }
+  .bound .s i.ok { background:var(--ok); } .bound .s i.bad { background:var(--bad); } .bound .s i.wait { background:var(--wait); }
+
+  /* the ledger */
+  .timeline { position:relative; padding-left:28px; }
+  .timeline::before { content:""; position:absolute; left:8px; top:10px; bottom:10px; width:2px; background:var(--line); }
+  .entry { position:relative; display:flex; gap:16px; align-items:baseline; padding:10px 0; font-size:15px; }
+  .entry::before { content:""; position:absolute; left:-25px; top:18px; width:12px; height:12px; border-radius:50%; background:var(--card); border:2px solid var(--ink3); }
+  .entry.ok::before { border-color:var(--ok); background:var(--ok); } .entry.bad::before { border-color:var(--bad); background:var(--bad); } .entry.wait::before { border-color:var(--wait); background:var(--wait); }
+  .entry .k { flex:1; }
+  .entry .k b { font-weight:600; margin-right:8px; }
+  .entry .k span { color:var(--ink2); }
+  .entry .t { color:var(--ink3); font-size:13px; white-space:nowrap; }
+  .entry.unread .k b { color:var(--bad); }
+  .foot { margin:28px 0 0; font-size:14px; color:var(--ink3); max-width:60ch; }
+  .doctrine { margin-top:88px; text-align:center; color:var(--ink2); font-size:15px; }
+
+  /* onboarding */
+  .steps3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; margin-top:48px; }
+  .steps3 .card { display:flex; flex-direction:column; gap:14px; min-height:240px; }
+  .steps3 .num { width:36px; height:36px; border-radius:50%; background:var(--ink); color:var(--card); display:flex; align-items:center; justify-content:center; font-weight:700; }
+  .steps3 .t { font-size:20px; font-weight:700; letter-spacing:-.02em; }
+  .steps3 .d { font-size:15px; color:var(--ink2); line-height:1.5; }
+  .steps3 .fill { flex:1; }
+  .tabs { display:flex; gap:14px; font-size:13px; color:var(--ink2); flex-wrap:wrap; }
   .tabs button { border:0; background:none; font:inherit; color:inherit; padding:0; cursor:pointer; }
   .tabs button[aria-selected="true"] { color:var(--ink); font-weight:600; }
-  ol.steps { margin:0; padding:0 18px 14px 36px; color:var(--ink2); font-size:14px; }
-  .seal2 { display:none; color:var(--ink3); } .seal2.bad { color:var(--bad); }
+  ol.how { margin:0; padding-left:20px; font-size:14px; color:var(--ink2); }
+  .steps3 .cmd { margin:0; width:100%; justify-content:space-between; }
 
-  @media (max-width:600px) {
-    .wrap { padding:0 16px; }
-    h1 { font-size:26px; }
-    .mark { width:44px; height:44px; border-radius:13px; font-size:21px; } .mark svg { width:22px; height:22px; }
-    .loop { padding:16px 14px 14px; } .loop .name { font-size:14px; } .loop .val { font-size:12px; }
-    h2 { padding:0 14px; } .row { padding:12px 14px; }
-    th:first-child, td:first-child { padding-left:14px; } th:last-child, td:last-child { padding-right:14px; }
-    .hide-s, .nav .seal, h2 .r { display:none; }
-    .nav .wrap { flex-wrap:wrap; height:auto; padding-top:10px; padding-bottom:10px; gap:8px 14px; }
-    td .sub { display:block; }
-    .row .v { white-space:normal; max-width:58%; }
-    .seal2 { display:inline; }
+  @media (max-width:900px) {
+    .wrap { padding:0 20px; }
+    main { padding:28px 0 80px; } section + section { margin-top:56px; }
+    .hero { grid-template-columns:1fr; gap:28px; } .ring { width:150px; height:150px; } .ring .center { font-size:44px; } .ring .center svg { width:44px; height:44px; }
+    h1 { font-size:32px; } .lead { font-size:16px; }
+    .loop { grid-template-columns:1fr; } .loop::before { display:none; } .loop .step { min-height:0; }
+    .sides, .figures, .bound, .steps3 { grid-template-columns:1fr; }
+    .figure .n { font-size:44px; }
+    .nav .acts { gap:14px; font-size:13px; }
+    h2 .r { display:none; }
+    .nav .wrap { flex-wrap:wrap; height:auto; padding-top:12px; padding-bottom:12px; gap:10px 16px; }
   }
 `;
 
-/* All of the folding happens here, in the browser. Kept deliberately close
-   to the Node modules it mirrors, and kept free of template literals so it
-   can live inside one. */
 const JS = String.raw`
 (function () {
   var NAMES = (window.AKESO && window.AKESO.scenarioNames) || {};
@@ -168,25 +223,16 @@ const JS = String.raw`
   var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   var CROSS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
   var DASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M7 12h10"/></svg>';
-  function row(cls, dot, k, sub, v, href) {
-    var inner = (dot ? '<span class="dot ' + dot + '" aria-hidden="true"></span>' : "") + '<span class="k">' + k + (sub ? '<span class="sub">' + sub + "</span>" : "") + "</span>" + (v != null ? '<span class="v">' + v + "</span>" : "") + (href ? '<span class="chev" aria-hidden="true">&rsaquo;</span>' : "");
-    return href ? '<a class="row ' + cls + '" href="' + href + '">' + inner + "</a>" : '<div class="row ' + cls + '">' + inner + "</div>";
-  }
-  function disclosure(id, dot, k, sub, v, inner) {
-    return '<details id="' + id + '"><summary class="row">' + (dot ? '<span class="dot ' + dot + '" aria-hidden="true"></span>' : "") + '<span class="k">' + k + (sub ? '<span class="sub">' + sub + "</span>" : "") + "</span>" + (v != null ? '<span class="v">' + v + "</span>" : "") + '<span class="chev" aria-hidden="true">&rsaquo;</span></summary><div class="inner">' + inner + "</div></details>";
-  }
-  function cmdRow(c) { return '<div class="row cmdrow"><span class="k"><code>' + esc(c) + '</code></span><button class="link" data-copy="' + esc(c) + '">Copy</button></div>'; }
-  function empty(text) { return '<div class="row empty">' + esc(text) + "</div>"; }
-  function hero(m, tone, text) { var mk = $("mark"); mk.className = "mark " + (tone || ""); mk.innerHTML = m; $("verdict").textContent = text; }
+  function cmd(c) { return '<div class="cmd"><code>' + esc(c) + '</code><button class="link" data-copy="' + esc(c) + '">Copy</button></div>'; }
 
   function render() {
     var D = window.AKESO || {};
     var onboarding = !!D.onboarding;
     var st = $("start"); if (st) st.hidden = !onboarding; $("page").hidden = onboarding;
     var status = $("status"); if (status) { status.textContent = D.demo ? "Demo" : (D.fileName || ""); status.className = "status"; status.title = D.demo ? "A real run on a test app. Load your own ledger to replace it." : "Read in this tab. Never uploaded."; }
-    var demoLink = $("demoLink"); if (demoLink) demoLink.hidden = !onboarding && !D.demo ? true : !!D.demo;
+    var demoLink = $("demoLink"); if (demoLink) demoLink.hidden = !onboarding;
     var backLink = $("backLink"); if (backLink) backLink.hidden = onboarding;
-    if (onboarding) { $("seal").textContent = "No ledger loaded"; $("seal").className = "seal none"; document.querySelectorAll(".appName").forEach(function (n) { n.textContent = "Your app"; }); document.title = "Akeso"; return; }
+    if (onboarding) { $("seal").textContent = "No ledger loaded"; $("seal").className = "seal none"; document.title = "Akeso"; return; }
 
     var L = Array.isArray(D.ledger) ? D.ledger.filter(function (e) { return e && typeof e === "object"; }) : [];
     function kinds(k) { return L.filter(function (e) { return e.kind === k; }); }
@@ -240,107 +286,98 @@ const JS = String.raw`
       fix: provenFix ? "done" : (fix && !passing) ? "failed" : fix ? "partial" : (ranLive && !passing) ? "next" : (ranLive && passing) ? "notneeded" : "todo",
       monitor: (sweep && !sweep.couldNotRun && matched > 0) ? "done" : (sweep && !sweep.couldNotRun) ? "nothing" : sweep ? "failed" : (passing || provenFix) ? "next" : "todo"
     };
-    var circle = {
+    var tone = {
       check: states.check === "done" ? (passing ? "ok" : grade === "?" ? "" : "bad") : states.check === "partial" ? "wait" : "",
       fix: states.fix === "done" ? "ok" : states.fix === "failed" ? "bad" : states.fix === "partial" ? "wait" : "",
       monitor: states.monitor === "done" ? (stillWrong.length ? "wait" : "ok") : states.monitor === "failed" ? "bad" : ""
     };
 
-    /* ---- the next step: the same ladder as the terminal ---- */
+    /* ---- the next step, the same ladder as the terminal ---- */
     var step;
-    if (!check) step = { h: "Not checked yet.", w: "", c: "npx akeso-check", m: DASH, tone: "" };
-    else if (!ranLive) step = { h: "Code read. Not yet run.", w: "Only the live Check, where a pretend customer pays and cancels, produces a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: DASH, tone: "" };
-    else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "Fix applied. Check still fails.", w: "A fix counts only when the Check passes afterwards.", c: "npx akeso-check fix --show", m: esc(grade), tone: "bad" } : { h: "Grade " + grade + ". " + failed + " of " + scenarios.length + " situations fail.", w: "Fix rewrites the webhook handler and the one file that touches your database, with backups.", c: "npx akeso-check fix", m: esc(grade), tone: "bad" };
-    else if (grade === "?") step = { h: "The Check could not finish. No grade.", w: "The run failed, not your app. Start the app and run it again.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: "?", tone: "" };
-    else if (sweep && sweep.couldNotRun) step = { h: "The last sweep could not run.", w: String(sweep.couldNotRun).replace(/\s+/g, " ").trim(), c: "npx akeso-check monitor", m: "?", tone: "" };
-    else if (sweep && matched === 0) step = { h: "No account could be compared.", w: "Stripe and your app use different customer ids, so nothing lines up. Pass your account id to Stripe as client_reference_id at checkout, then sweep again.", c: "npx akeso-check monitor", m: "?", tone: "" };
-    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your approval.", w: "", c: "npx akeso-check approvals", m: String(waiting.length), tone: "wait" };
-    else if (sweep) step = stillWrong.length === 0 ? { h: "Stripe and your app agree.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement", m: CHECK, tone: "ok" } : { h: plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.", w: "", c: "npx akeso-check monitor", m: String(stillWrong.length), tone: "wait" };
-    else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Accounts that drifted before the fix are still wrong. Monitor compares them with Stripe.", c: "npx akeso-check monitor", m: esc(grade), tone: "ok" };
+    if (!check) step = { h: "Not checked yet.", w: "Run the Check in your project. It reads the code first, then runs a pretend customer through ten billing situations.", c: "npx akeso-check", m: DASH, tone: "", arc: 0, sub: "not run" };
+    else if (!ranLive) step = { h: "Code read. Not yet run.", w: "Only the live Check, where a pretend customer pays and cancels against your running app, produces a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: DASH, tone: "", arc: 0.15, sub: "read only" };
+    else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "Fix applied. The Check still fails.", w: "A fix counts only when the Check passes afterwards.", c: "npx akeso-check fix --show", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" } : { h: "Grade " + grade + ". " + failed + " of " + scenarios.length + " situations fail.", w: "Fix rewrites the webhook handler and the one file that touches your database, with backups, then proves it by running the same test again.", c: "npx akeso-check fix", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" };
+    else if (grade === "?") step = { h: "The Check could not finish. No grade.", w: "The run failed, not your app. Start the app and run it again.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: "?", tone: "", arc: 0, sub: "no grade" };
+    else if (sweep && sweep.couldNotRun) step = { h: "The last sweep could not run.", w: String(sweep.couldNotRun).replace(/\s+/g, " ").slice(0, 160), c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "no verdict" };
+    else if (sweep && matched === 0) step = { h: "No account could be compared.", w: "Stripe and your app use different customer ids, so nothing lines up. Pass your account id to Stripe as client_reference_id at checkout, then sweep again.", c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "0 compared" };
+    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your approval.", w: "Akeso never takes access away on its own. Everything else on this page is already handled.", c: "npx akeso-check approvals", m: String(waiting.length), tone: "wait", arc: 1, sub: "waiting" };
+    else if (sweep) step = stillWrong.length === 0 ? { h: "Stripe and your app agree.", w: "Every paying customer has access, and nobody who stopped paying still has it.", c: "npx akeso-check statement", m: CHECK, tone: "ok", arc: 1, sub: matched + " agree" } : { h: plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.", w: "", c: "npx akeso-check monitor", m: String(stillWrong.length), tone: "wait", arc: agreeing / Math.max(1, matched), sub: "of " + matched };
+    else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Accounts that drifted before the fix are still wrong. Monitor compares today's real customers with Stripe.", c: "npx akeso-check monitor", m: esc(grade), tone: "ok", arc: 1, sub: "grade" };
 
     /* ---- render ---- */
     var app = D.appName || "Your app";
     document.querySelectorAll(".appName").forEach(function (n) { n.textContent = app; });
     document.title = "Akeso · " + app;
-    hero(step.m, step.tone, step.h);
+    $("verdict").textContent = step.h;
     $("lead").textContent = step.w || ""; $("lead").hidden = !step.w;
-    $("next").innerHTML = step.c ? '<code>' + esc(step.c) + '</code><button data-copy="' + esc(step.c) + '">Copy</button>' : ""; $("next").hidden = !step.c;
+    $("next").innerHTML = step.c ? cmd(step.c) : ""; $("next").hidden = !step.c;
+    var ring = $("ring"); ring.className = "ring " + (step.tone || "none"); ring.style.setProperty("--arc", String(Math.round(step.arc * 471)));
+    $("ringCenter").innerHTML = step.m + (step.sub ? "<small>" + esc(step.sub) + "</small>" : "");
 
-    /* the loop, with each step's detail behind it */
+    /* ---- the loop ---- */
     var ICONS = { ok: CHECK, bad: CROSS, wait: DASH };
-    function stepCell(id, name, state, val, ink, lastOne) {
-      var tone = circle[id]; var icon = ICONS[tone] || (state === "notneeded" || state === "nothing" ? DASH : "");
-      return '<a href="#d-' + id + '" data-open="d-' + id + '" class="' + (state === "todo" ? "todo" : "") + '"><div class="m"><span class="c ' + (tone || (state === "next" ? "next" : "")) + '" aria-hidden="true">' + icon + "</span>" + (lastOne ? "" : '<span class="l ' + (state === "done" || state === "notneeded" ? "ok" : "") + '"></span>') + '</div><div class="name">' + name + '</div><div class="val' + (ink ? " ink" : "") + '">' + val + "</div></a>";
-    }
-    var monVal = states.monitor === "done" ? (stillWrong.length ? plural(stillWrong.length, "disagrees", "disagree") : "All agree") : states.monitor === "failed" ? "Could not run" : states.monitor === "nothing" ? "Nothing to compare" : states.monitor === "next" ? "Next" : "Not yet";
-    var monSub = states.monitor === "done" ? matched + " compared" + (fixedNow.length ? " · " + fixedNow.length + " restored" : "") : "";
+    function node(id, state) { var t = tone[id]; var icon = ICONS[t] || (state === "notneeded" || state === "nothing" ? DASH : ""); return '<span class="node ' + (t || (state === "next" ? "next" : "")) + '" aria-hidden="true">' + icon + "</span>"; }
+    var tiles = scenarios.length ? '<div class="tiles">' + scenarios.map(function (r) { return '<span class="tile ' + (r.outcome === "pass" ? "ok" : r.outcome === "fail" ? "bad" : "none") + '" title="' + esc(NAMES[r.id] || r.id) + '"></span>'; }).join("") + "</div>" : '<div class="tiles">' + "<span class=tile></span>".repeat(10) + "</div>";
+    var scenarioList = scenarios.length ? '<ul class="list">' + scenarios.map(function (r) { var o = r.outcome; return '<li class="' + (o === "pass" ? "ok" : o === "fail" ? "bad" : "") + '"><span>' + esc(NAMES[r.id] || r.id) + "</span><b>" + (o === "pass" ? "Passed" : o === "fail" ? "Failed" : o === "reported" ? "Not graded" : esc(cap(o))) + "</b></li>"; }).join("") + "</ul>" : "";
+    var files = fix ? (fix.files || []) : [];
+    var chips = files.length ? '<div class="chips">' + files.slice(0, 6).map(function (f) { return '<span class="chip ' + esc(f.action || "") + '" title="' + esc(f.path) + '">' + esc((f.path || "").split("/").pop()) + "</span>"; }).join("") + (files.length > 6 ? '<span class="chip">+' + (files.length - 6) + "</span>" : "") + "</div>" : '<div class="chips"><span class="chip" style="opacity:.5">webhook handler</span><span class="chip" style="opacity:.5">entitlement</span></div>';
+    var fileList = files.length ? '<ul class="list">' + files.map(function (f) { return "<li><span class=code>" + esc(f.path || "") + "</span><b>" + esc(cap(f.action || "")) + "</b></li>"; }).join("") + "</ul>" : "";
+    var dotList = [];
+    stillWrong.forEach(function (a) { dotList.push(a.verdict === "locked_out" ? "bad" : "wait"); });
+    fixedNow.forEach(function () { dotList.push("ok"); });
+    for (var i = 0; i < Math.min(agreeing, 160); i++) dotList.push("ok");
+    noVerdict.forEach(function () { dotList.push("none"); }); notInStripe.forEach(function () { dotList.push("none"); });
+    var dots = sweep && matched > 0 ? '<div><div class="dots">' + dotList.map(function (d) { return '<i class="' + d + '"></i>'; }).join("") + (agreeing > 160 ? '<i class="more">+' + (agreeing - 160) + "</i>" : "") + '</div><div class="legend"><span><i></i>' + (agreeing + fixedNow.length) + " agree</span>" + (stillWrong.length ? '<span><i class="wait"></i>' + stillWrong.length + " disagree</span>" : "") + (noVerdict.length + notInStripe.length ? '<span><i class="none"></i>' + (noVerdict.length + notInStripe.length) + " no verdict</span>" : "") + "</div></div>" : '<div class="dots">' + '<i class="none"></i>'.repeat(24) + "</div>";
     $("loop").innerHTML =
-      stepCell("check", "Check", states.check, ranLive ? "Grade " + esc(grade || "?") : check ? "Read, not run" : "Not run", ranLive, false) +
-      stepCell("fix", "Fix", states.fix, provenFix ? plural((fix.files || []).length, "file", "files") + " · re-test passed" : (fix && !passing) ? "Check still fails" : fix ? "Not re-tested" : states.fix === "notneeded" ? "Not needed" : states.fix === "next" ? "Next" : "Not yet", provenFix, false) +
-      stepCell("monitor", "Monitor", states.monitor, monVal + (monSub ? '<span class="sub">' + monSub + "</span>" : ""), states.monitor === "done", true);
+      '<div class="card step"><div class="head">' + node("check", states.check) + '<div><div class="title">Check</div><div class="state">' + (ranLive ? (grade === "?" ? "No grade" : "Grade " + esc(grade) + " · " + passed + " of " + scenarios.length + " passed") : check ? "Code read, not run" : "Not run") + '</div></div></div><div class="vis">' + tiles + "</div>" + (scenarioList ? "<details><summary class=more>Ten situations</summary>" + scenarioList + "</details>" : '<div class="quiet" style="font-size:14px">' + (check ? "The live Check produces the grade." : "Ten billing situations, one tile each.") + "</div>") + "</div>" +
+      '<div class="card step"><div class="head">' + node("fix", states.fix) + '<div><div class="title">Fix</div><div class="state">' + (provenFix ? plural(files.length, "file", "files") + " · re-test passed" : (fix && !passing) ? "Applied · re-test failed" : fix ? "Applied · not re-tested" : states.fix === "notneeded" ? "Not needed" : states.fix === "next" ? "Next" : "Not yet") + '</div></div></div><div class="vis">' + chips + "</div>" + (fileList ? "<details><summary class=more>Files written</summary>" + fileList + "</details>" : '<div class="quiet" style="font-size:14px">Rewrites the webhook handler and the one file that touches your database, with backups.</div>') + "</div>" +
+      '<div class="card step"><div class="head">' + node("monitor", states.monitor) + '<div><div class="title">Monitor</div><div class="state">' + (states.monitor === "done" ? matched + " compared · " + (stillWrong.length ? plural(stillWrong.length, "disagrees", "disagree") : "all agree") : states.monitor === "failed" ? "Could not run" : states.monitor === "nothing" ? "Nothing to compare" : states.monitor === "next" ? "Next" : "Not yet") + '</div></div></div><div class="vis">' + dots + "</div>" + '<div class="quiet" style="font-size:14px">' + (sweep ? "One dot per account: Stripe and your app compared, " + esc(when(sweep.at)) + "." : "One dot per account: Stripe and your app compared.") + "</div></div>";
 
-    var scenarioRows = scenarios.length ? scenarios.map(function (r) { var o = r.outcome; return row("", o === "pass" ? "ok" : o === "fail" ? "bad" : "", esc(NAMES[r.id] || r.id), null, o === "pass" ? "Passed" : o === "fail" ? "Failed" : o === "reported" ? "Not graded" : cap(o)); }).join("") : empty(check ? "Read, not run." : "Not run yet.");
-    var fileRows = fix ? (fix.files || []).map(function (f) { return row("", null, '<span class="code">' + esc(f.path || "") + "</span>", null, cap(f.action || "")); }).join("") : empty(states.fix === "notneeded" ? "Nothing needed fixing." : "No fix written yet.");
+    /* ---- what needs you, and where the two sides disagree ---- */
+    $("inbox").innerHTML = waiting.length ? waiting.map(function (r) {
+      return '<div class="approval"><p class="big wait">' + esc(r.account) + '</p><p class="why">' + esc(r.reason || "") + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + " a month" : "") + " · " + (r.ready ? "ready to approve" : "held until " + esc(when(r.readyAt))) + "</p>" + cmd("npx akeso-check approvals --approve " + r.id) + "</div>";
+    }).join("") : '<p class="quiet">Nothing. Akeso never removes access on its own, so removals only ever appear here.</p>';
     function stripeWord(a) { return a.stripe == null ? "No subscription" : a.stripe === "incomplete_expired" ? "Expired" : cap(a.stripe); }
     function appWord(a) { return fixedSince(a) ? "Has access" : a.app == null ? "Unknown" : a.app ? "Has access" : "No access"; }
     function meaning(a) {
-      if (a.verdict === "locked_out") return fixedSince(a) ? "Restored by Akeso." : "Paying, locked out. Not yet restored.";
+      if (a.verdict === "locked_out") return fixedSince(a) ? "Restored by Akeso, confirmed." : "Paying, locked out. Not yet restored.";
       if (a.verdict === "still_entitled") return queuedFor[a.account] ? "Not paying, still has access. Awaiting your approval." : "Not paying, still has access.";
       if (a.verdict === "no_conclusion") return "Payment not finished. No verdict.";
-      if (a.verdict === "no_subscription") return "Not in Stripe. Left alone.";
-      return "";
+      return "Not in Stripe. Left alone.";
     }
-    function dotFor(a) { return a.verdict === "locked_out" ? (fixedSince(a) ? "ok" : "bad") : a.verdict === "still_entitled" ? "wait" : ""; }
-    function accountRow(a) { var price = money(a.priceMonthly); return '<tr><td><span class="dot ' + dotFor(a) + '" aria-hidden="true"></span><span class="code">' + esc(a.account) + '</span><span class="sub">Stripe: ' + esc(stripeWord(a)) + " · App: " + esc(appWord(a)) + (price ? " · " + price + "/mo" : "") + "<br>" + esc(meaning(a)) + '</span></td><td class="hide-s">' + esc(stripeWord(a)) + '</td><td class="hide-s">' + esc(appWord(a)) + '</td><td class="mute hide-s">' + esc(meaning(a)) + '</td><td class="num hide-s">' + esc(price) + "</td></tr>"; }
-    var shown = stillWrong.concat(fixedNow, noVerdict, notInStripe);
-    var accountRows = shown.map(accountRow).join("");
-    if (sweep && matched > 0 && agreeing > 0) accountRows += '<tr><td colspan="5" class="mute">' + agreeing + " agree</td></tr>";
-    var table = '<table><thead><tr><th>Account</th><th class="hide-s">Stripe says</th><th class="hide-s">App says</th><th class="hide-s">Meaning</th><th class="num hide-s">Monthly</th></tr></thead><tbody>' + (accountRows || '<tr><td colspan="5" class="mute">' + (sweep ? "Nothing to compare on the last sweep." : "No sweep has run yet.") + "</td></tr>") + "</tbody></table>";
-    var sw = kinds("sweep");
-    var sweepRows = sw.length ? sw.slice().reverse().map(function (e) { var c = e.comparison || {}; return row("", e.couldNotRun ? "bad" : c.comparable === false ? "" : c.clean ? "ok" : "wait", esc(when(e.at)), null, e.couldNotRun ? "Could not run" : c.comparable === false ? "Nothing to compare" : (c.counts ? c.counts.matched + " compared · " : "") + (c.clean ? "all agree" : money(Number(c.monthlyExposure) || 0) + "/mo unpaid")); }).join("") : empty("No sweep has run yet.");
+    function toneFor(a) { return a.verdict === "locked_out" ? (fixedSince(a) ? "ok" : "bad") : a.verdict === "still_entitled" ? "wait" : "none"; }
+    var shown = stillWrong.concat(fixedNow, noVerdict);
+    $("compare").innerHTML = shown.length ? '<div class="compare">' + shown.map(function (a) {
+      var t = toneFor(a); var price = money(a.priceMonthly);
+      return '<div class="who"><span class="code">' + esc(a.account) + "</span><span>" + esc(meaning(a)) + (price ? " · " + price + "/mo" : "") + '</span></div><div class="side ' + (t === "ok" ? "ok" : t === "none" ? "" : t) + '"><small>Stripe says</small><b>' + esc(stripeWord(a)) + '</b></div><div class="tie ' + t + '" aria-hidden="true">' + (t === "ok" ? "=" : t === "none" ? "?" : "&ne;") + '</div><div class="side ' + (t === "ok" ? "ok" : t === "none" ? "" : t) + '"><small>App says</small><b>' + esc(appWord(a)) + "</b></div>";
+    }).join("") + "</div>" + (notInStripe.length ? '<p class="note">' + plural(notInStripe.length, "account has", "accounts have") + " access with no Stripe subscription. Reported, never touched.</p>" : "") : '<p class="quiet">' + (sweep && matched > 0 ? "Every compared account agrees." : sweep ? "Nothing could be compared on the last sweep." : "The first sweep fills this in.") + "</p>";
+    $("compareN").textContent = sweep && matched > 0 ? matched + " compared · " + esc(when(sweep.at)) : "";
 
-    $("details").innerHTML =
-      disclosure("d-check", circle.check, "Ten situations", ranLive ? (grade === "?" ? "No grade" : "Grade " + esc(grade) + (passing ? " · " + passed + " passed" + (notGraded ? ", " + notGraded + " not graded" : "") : " · " + failed + " fail")) : (check ? "Read, not run" : "Not run"), check ? esc(when(check.at)) : "", scenarioRows) +
-      disclosure("d-fix", circle.fix, "Files written", provenFix ? "Re-test passed" : (fix && !passing) ? "Re-test failed. Not counted as fixed." : fix ? "Not yet re-tested" : states.fix === "notneeded" ? "Nothing needed fixing" : "No fix yet", fix ? esc(when(fix.at)) : "", fileRows) +
-      disclosure("d-monitor", circle.monitor, "Accounts, last sweep", sweep ? (matched + " compared" + (stillWrong.length ? " · " + plural(stillWrong.length, "disagrees", "disagree") : "")) : "No sweep yet", sweep ? esc(when(sweep.at)) : "", table + sweepRows);
+    /* ---- receipts ---- */
+    var unpaid = lastGood ? (Number(lastGood.comparison.monthlyExposure) || 0) : null;
+    $("figures").innerHTML =
+      '<div class="card figure"><div class="n' + (restored.length ? " ok" : "") + '">' + restored.length + '</div><div class="l">Access restored</div><div class="s">' + (unconfirmed.length ? unconfirmed.length + " not yet confirmed" : restored.length ? "each confirmed by reading back" : "paying customers let back in") + "</div></div>" +
+      '<div class="card figure"><div class="n">' + removed.length + '</div><div class="l">Access removed</div><div class="s">only ever with your approval</div></div>' +
+      '<div class="card figure"><div class="n' + (unpaid > 0 ? " wait" : "") + '">' + (unpaid == null ? "–" : money(unpaid)) + '</div><div class="l">Unpaid access, per month</div><div class="s">' + (unpaid == null ? "no sweep yet" : "at list price, last sweep") + "</div></div>";
 
-    /* waiting for approval */
-    function approvalRows(r) {
-      return row("", r.ready ? "wait" : "", '<span class="code">' + esc(r.account) + "</span>", esc(r.reason || "") + (typeof r.priceMonthly === "number" ? " · " + money(r.priceMonthly) + "/mo" : ""), r.ready ? '<span class="wait">Ready to approve</span>' : "Held until " + esc(when(r.readyAt))) +
-        cmdRow("npx akeso-check approvals --approve " + r.id);
-    }
-    $("inbox").innerHTML = waiting.length ? waiting.map(approvalRows).join("") : empty("No removals waiting.");
-
-    /* settings: what is connected and under which rules */
+    /* ---- the boundary ---- */
     var fw = check && (check.framework || (check.detection && check.detection.framework));
-    $("settings").innerHTML =
-      row("", check ? "ok" : "", "Your app", fw ? esc(cap(String(fw).replace(/-/g, " "))) : null, check ? "Read" : "Not read") +
-      row("", sweep && !sweep.couldNotRun ? "ok" : sweep ? "bad" : "", "Stripe", sweep ? (sweep.couldNotRun ? "Last sweep could not reach it" : "Read-only, from your project's env") : "Read-only key from your project's env", sweep && !sweep.couldNotRun ? "Connected" : sweep ? "Failed" : "Not yet") +
-      row("", covered ? "ok" : "", "Access rules", covered ? "Version " + esc((cert.policy && cert.policy.ruleVersion) || "1") + " · confirmed " + esc(when(cert.at)) : "Confirm with: npx akeso-check certify", covered ? "Confirmed" : "Not yet") +
-      row("", "ok", "Restore mode", "Grants are automatic. Removals wait for your approval.", "Safe");
+    $("bound").innerHTML =
+      '<div class="card z"><div class="glyph">' + LOCK + '</div><div class="t">Your machine</div><div class="d">Your code, your keys and this ledger stay here. Every command runs locally and nothing is uploaded.</div><div class="s"><i class="ok"></i>Nothing leaves</div></div>' +
+      '<div class="card z"><div class="glyph">' + EYE + '</div><div class="t">Stripe</div><div class="d">Read with a restricted, read-only key from your own env file. Akeso never writes to Stripe and never stores the key.</div><div class="s"><i class="' + (sweep && !sweep.couldNotRun ? "ok" : sweep ? "bad" : "") + '"></i>' + (sweep && !sweep.couldNotRun ? "Read-only, connected" : sweep ? "Last read failed" : "Read-only, not yet read") + "</div></div>" +
+      '<div class="card z"><div class="glyph">' + KEY + '</div><div class="t">Your app' + (fw ? ' <span style="font-weight:400;color:var(--ink3);font-size:14px">' + esc(cap(String(fw).replace(/-/g, " "))) + "</span>" : "") + '</div><div class="d">Two small endpoints, signed with a secret only you hold. Grants are automatic. Removals wait for you. Delete one file and Akeso can no longer write at all.</div><div class="s"><i class="' + (covered ? "ok" : fix ? "wait" : "") + '"></i>' + (covered ? "Rules confirmed, version " + esc((cert.policy && cert.policy.ruleVersion) || "1") : fix ? "Rules not confirmed yet: npx akeso-check certify" : "Not connected yet") + "</div></div>";
 
-    /* receipts */
-    $("totals").innerHTML =
-      row("", null, "Access restored", unconfirmed.length ? unconfirmed.length + " not yet confirmed" : null, '<span class="big">' + restored.length + "</span>") +
-      row("", null, "Access removed", null, '<span class="big">' + removed.length + "</span>") +
-      row("", null, "Unpaid access", null, lastGood ? '<span class="big' + ((Number(lastGood.comparison.monthlyExposure) || 0) > 0 ? " wait" : "") + '">' + money(Number(lastGood.comparison.monthlyExposure) || 0) + "/mo</span>" : "No sweep yet") +
-      row("", null, "Revenue recovered", "Akeso does not see your payouts", "Not measured");
-    var restoreRows = restores.length ? restores.slice().reverse().map(function (e) {
-      var ok = e.result === "applied";
-      var word = e.direction === "grant" ? (ok ? "Restored" : "Restore failed") : (ok ? "Removed" : "Removal failed");
-      return row("", ok && e.verified ? "ok" : ok ? "wait" : "bad", '<span class="code">' + esc(e.account) + "</span>", esc(when(e.at)), esc(word) + (ok ? (e.verified ? " · confirmed" : " · not confirmed") : ""));
-    }).join("") : empty("No changes yet.");
-    var entryRows = L.length ? L.slice().reverse().map(function (e) {
+    /* ---- the ledger ---- */
+    $("timeline").innerHTML = L.length ? L.slice().reverse().map(function (e) {
+      var t = e.kind === "check" ? (e.grade === "A" ? "ok" : e.grade && e.grade !== "?" ? "bad" : "") : e.kind === "fix" ? "wait" : e.kind === "sweep" ? (e.couldNotRun ? "bad" : e.comparison && e.comparison.clean ? "ok" : "wait") : e.kind === "restore" ? (e.result === "applied" ? "ok" : "bad") : e.kind === "approval" ? "wait" : e.kind === "certify" ? "ok" : e.kind === "unreadable" ? "bad" : "";
       var sum = e.kind === "check" ? (e.grade ? "Grade " + e.grade : "Code read") : e.kind === "fix" ? plural((e.files || []).length, "file written", "files written") : e.kind === "sweep" ? (e.couldNotRun ? "Could not run" : (e.comparison && e.comparison.counts ? e.comparison.counts.matched + " compared" : "")) : e.kind === "restore" ? (e.direction === "grant" ? "Restored " : "Removed ") + (e.account || "") + (e.result === "applied" ? "" : " · " + e.result) : e.kind === "approval" ? "Removal " + (e.state === "cancelled" ? "canceled" : e.state || "") + " " + (e.account || "") : e.kind === "certify" ? "Access rules confirmed" : e.kind === "unreadable" ? "Unreadable line" : "";
-      return row("", null, '<span class="code">' + esc(e.seq || "") + "</span>&nbsp;&nbsp;" + esc(e.kind === "unreadable" ? "Line " + e.line : cap(e.kind)), esc(sum), esc(when(e.at)));
-    }).join("") : empty("The ledger is empty.");
-    $("history").innerHTML =
-      disclosure("d-changes", null, "Changes made", plural(restores.length, "restore", "restores"), null, restoreRows) +
-      disclosure("d-ledger", null, "Ledger", plural(L.length, "entry", "entries") + (D.root ? " · " + esc(D.root) + "/.akeso/ledger.jsonl" : ""), '<span id="sealWord"></span>', entryRows + '<p class="foot" style="margin:14px 18px 14px">Each entry is hashed with the one before it. This page recomputes every hash; an edited entry shows as not verified.</p>');
+      return '<div class="entry ' + t + (e.kind === "unreadable" ? " unread" : "") + '"><div class="k"><b>' + esc(e.kind === "unreadable" ? "Line " + e.line : cap(e.kind)) + "</b><span>" + esc(sum) + '</span></div><div class="t">' + esc(when(e.at)) + "</div></div>";
+    }).join("") : '<p class="quiet">The ledger is empty.</p>';
+    $("ledgerWhere").textContent = D.root ? D.root + "/.akeso/ledger.jsonl" : (D.fileName || "");
 
-    /* chain */
+    /* ---- chain ---- */
     var seal = $("seal"); seal.className = "seal none"; seal.textContent = L.length ? "Verifying" : "No ledger";
-    function setSeal(text, bad, none) { seal.textContent = text; seal.className = "seal" + (bad ? " bad" : none ? " none" : ""); document.querySelectorAll(".seal2").forEach(function (s2) { s2.textContent = " · " + text; s2.className = "seal2" + (bad ? " bad" : ""); }); var w = $("sealWord"); if (w) { w.textContent = bad ? "Not verified" : none ? "Not verified" : "Verified"; w.style.color = bad ? "var(--bad)" : ""; } }
+    function setSeal(text, bad, none) { seal.textContent = text; seal.className = "seal" + (bad ? " bad" : none ? " none" : ""); var s2 = $("seal2"); if (s2) { s2.textContent = text; s2.className = "seal" + (bad ? " bad" : none ? " none" : ""); } }
     var badLine = L.find(function (e) { return e.kind === "unreadable"; });
     if (badLine) setSeal("Line " + badLine.line + " unreadable", true);
     else if (L.length && window.crypto && crypto.subtle) {
@@ -359,13 +396,16 @@ const JS = String.raw`
     } else if (L.length) { setSeal(plural(L.length, "entry", "entries") + " · not verified", false, true); }
   }
 
-  /* things that live on the document, so they survive a re-render */
+  var LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  var EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var KEY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="M11 11l9-9M15 7l3 3M18 4l2 2"/></svg>';
+
   function loadRows(text) {
     var n = 0;
     return text.split("\n").filter(function (l) { return l.trim(); }).map(function (l) { n++; try { var o = JSON.parse(l); return (o && typeof o === "object") ? o : { kind: "unreadable", line: n }; } catch (x) { return { kind: "unreadable", line: n }; } });
   }
   document.addEventListener("change", function (e) {
-    if (e.target.id !== "ledgerFile") return;
+    if (!e.target.matches("input[type=file]")) return;
     var f = e.target.files[0]; if (!f) return;
     f.text().then(function (t) {
       var rows = loadRows(t); var D = window.AKESO || {};
@@ -383,8 +423,6 @@ const JS = String.raw`
       else done("Select and copy");
       return;
     }
-    var o = e.target.closest("[data-open]");
-    if (o) { var d = $(o.dataset.open); if (d) { d.open = true; } return; }
     if (e.target.id === "demoLink") { e.preventDefault(); var D = window.AKESO || {}; window.AKESO = Object.assign({}, D, { ledger: D.demoLedger || [], appName: D.demoName || "Demo app", demo: true, onboarding: false, fileName: "" }); render(); window.scrollTo(0, 0); return; }
     if (e.target.id === "backLink") { e.preventDefault(); var D2 = window.AKESO || {}; window.AKESO = Object.assign({}, D2, { ledger: [], demo: false, onboarding: true, fileName: "" }); render(); window.scrollTo(0, 0); return; }
     var t = e.target.closest("[data-tool]");
@@ -392,7 +430,7 @@ const JS = String.raw`
       var P = "Run npx akeso-check here, follow its next steps, and explain the report to me in plain English.";
       var T = { terminal: { paste: "npx akeso-check" }, claude: { paste: P }, cursor: { paste: P }, codex: { paste: P }, lovable: { paste: "npx akeso-check", steps: true } };
       document.querySelectorAll("[data-tool]").forEach(function (x) { x.setAttribute("aria-selected", String(x === t)); });
-      $("cmd").textContent = T[t.dataset.tool].paste; $("cmdCopy").dataset.copy = T[t.dataset.tool].paste; $("steps").hidden = !T[t.dataset.tool].steps;
+      $("cmd").textContent = T[t.dataset.tool].paste; $("cmdCopy").dataset.copy = T[t.dataset.tool].paste; $("how").hidden = !T[t.dataset.tool].steps;
     }
   });
   render();
@@ -400,61 +438,80 @@ const JS = String.raw`
 `;
 
 export function renderDashboard({ ledger = [], appName = "this app", root = null, hosted = false, demo = false } = {}) {
-  /* On the hosted copy a demo ledger starts hidden behind a link; the first
-     thing a stranger sees is step one. The local page always has its ledger. */
   const data = JSON.stringify(hosted && demo
     ? { ledger: [], demoLedger: ledger, demoName: appName, appName: "Your app", onboarding: true, demo: false, hosted: true, scenarioNames: SCENARIO_NAMES }
     : { ledger, appName, root, onboarding: false, demo: false, hosted, scenarioNames: SCENARIO_NAMES }).replaceAll("</", "<\\/");
 
   const acts = hosted
-    ? `<span class="acts"><span class="status" id="status"></span><a href="#" id="backLink" hidden>Start over</a><a href="#" id="demoLink">See a demo</a><label title="Read in this tab. Never uploaded.">Load your ledger<input type="file" id="ledgerFile" class="sr" accept=".jsonl,application/json,text/plain"></label></span>`
+    ? `<span class="acts"><span class="status" id="status"></span><a href="#" class="link" id="backLink" hidden>Start over</a><a href="#" class="link" id="demoLink">See a demo</a><label class="link" title="Read in this tab. Never uploaded.">Load your ledger<input type="file" id="ledgerFile" class="sr" accept=".jsonl,application/json,text/plain"></label></span>`
     : `<span class="acts"></span>`;
 
   const start = hosted ? `
     <section id="start" hidden>
-      <p class="app">Your app</p>
-      <div class="hero"><div class="mark" aria-hidden="true">1</div><h1>Start with one command.</h1></div>
-      <p class="lead">It reads your project, runs a pretend customer through ten billing situations, and grades what it finds. Nothing leaves your machine.</p>
-      <div class="group first">
-        <div class="tabs" id="tabs" role="tablist"><button role="tab" aria-selected="true" data-tool="terminal">Terminal</button><button role="tab" aria-selected="false" data-tool="claude">Claude Code</button><button role="tab" aria-selected="false" data-tool="cursor">Cursor</button><button role="tab" aria-selected="false" data-tool="codex">Codex</button><button role="tab" aria-selected="false" data-tool="lovable">Lovable / Bolt / v0</button></div>
-        <ol class="steps" id="steps" hidden>
-          <li>Open your project in your builder.</li><li>Click GitHub (top right) and follow its steps to put your project on GitHub.</li><li>Go to github.com and open your new repository.</li><li>Click the green Code button.</li><li>Click Codespaces, then Create codespace on main.</li><li>A code editor opens in a new tab. Wait for it to load.</li><li>If a box asks Do you trust the authors, click Trust Folder and Continue.</li><li>Click the terminal panel at the bottom, paste this, press Enter:</li>
-        </ol>
-        <div class="row"><span class="n" aria-hidden="true">1</span><span class="k">Paste this in your project's terminal<span class="sub">Free. No dependencies. Plain JavaScript you can read: <a href="https://github.com/jacekimmy/akeso-check" style="color:var(--link)">github.com/jacekimmy/akeso-check</a></span></span></div>
-        <div class="row cmdrow"><span class="k"><code id="cmd">npx akeso-check</code></span><button class="link" id="cmdCopy" data-copy="npx akeso-check">Copy</button></div>
-        <div class="row"><span class="n" aria-hidden="true">2</span><span class="k">Load the ledger it writes<span class="sub">.akeso/ledger.jsonl in your project. Read in this tab, never uploaded.</span></span><label class="v" style="color:var(--link);cursor:pointer" title="Read in this tab. Never uploaded.">Load your ledger<input type="file" class="sr" id="ledgerFile2" onchange="document.getElementById('ledgerFile').files=this.files;document.getElementById('ledgerFile').dispatchEvent(new Event('change',{bubbles:true}))"></label></div>
-        <div class="row"><span class="n" aria-hidden="true">3</span><span class="k">This page becomes your app's<span class="sub">The grade, the fix, what is waiting for you, and the receipts. Every later command adds to it.</span></span></div>
+      <div class="hero">
+        <div>
+          <h1>Does your app give paid access to exactly the people paying for it?</h1>
+          <p class="lead">One command finds out. It reads your project, runs a pretend customer through ten billing situations against your running app, and grades what it finds. Nothing leaves your machine.</p>
+        </div>
+        <div class="ring none" style="--arc:0"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="arc" cx="80" cy="80" r="70"/></svg><div class="center">?<small>not yet run</small></div></div>
+      </div>
+      <div class="steps3">
+        <div class="card"><div class="num">1</div><div class="t">Paste one command</div><div class="tabs" id="tabs" role="tablist"><button role="tab" aria-selected="true" data-tool="terminal">Terminal</button><button role="tab" aria-selected="false" data-tool="claude">Claude Code</button><button role="tab" aria-selected="false" data-tool="cursor">Cursor</button><button role="tab" aria-selected="false" data-tool="codex">Codex</button><button role="tab" aria-selected="false" data-tool="lovable">Lovable / Bolt / v0</button></div><ol class="how" id="how" hidden><li>Open your project in your builder.</li><li>Click GitHub (top right) and follow its steps to put your project on GitHub.</li><li>On github.com, open the repository, click the green Code button, then Codespaces, then Create codespace on main.</li><li>When the editor loads, click the terminal at the bottom, paste this, press Enter.</li></ol><div class="fill"></div><div class="cmd"><code id="cmd">npx akeso-check</code><button class="link" id="cmdCopy" data-copy="npx akeso-check">Copy</button></div><div class="d">Free. No dependencies. Plain JavaScript you can read first: <a class="link" href="https://github.com/jacekimmy/akeso-check">github.com/jacekimmy/akeso-check</a></div></div>
+        <div class="card"><div class="num">2</div><div class="t">Load the ledger it writes</div><div class="d">Every run appends to <span class="code">.akeso/ledger.jsonl</span> in your project: what was checked, what was fixed, what was proven, what was compared. It is read in this tab and never uploaded.</div><div class="fill"></div><label class="link">Load your ledger<input type="file" class="sr" accept=".jsonl,application/json,text/plain"></label></div>
+        <div class="card"><div class="num">3</div><div class="t">This page becomes your app's</div><div class="d">The grade, the fix and its proof, every account where Stripe and your app disagree, what is waiting for your approval, and the receipts. Every later command adds to it.</div><div class="fill"></div><a href="#" class="link" id="demoLink2" onclick="document.getElementById('demoLink').click();return false;">See it with a demo ledger</a></div>
       </div>
     </section>` : "";
 
   const shell = `<header class="nav"><div class="wrap">
-    <span class="brand">Akeso</span>
+    <span class="brand"><i aria-hidden="true"></i>Akeso</span>
     ${acts}
     <span class="seal" id="seal" aria-live="polite"></span>
   </div></header>
   <main class="wrap">
     ${start}
-    <section id="page">
-      <p class="app"><span class="appName"></span><span class="seal2"></span></p>
-      <div class="hero"><div class="mark" id="mark" aria-hidden="true"></div><h1 id="verdict"></h1></div>
-      <p class="lead" id="lead"></p>
-      <div class="cmd" id="next"></div>
+    <div id="page">
+      <section>
+        <p class="eyebrow appName"></p>
+        <div class="hero">
+          <div>
+            <h1 id="verdict"></h1>
+            <p class="lead" id="lead"></p>
+            <div id="next"></div>
+          </div>
+          <div class="ring" id="ring"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="arc" cx="80" cy="80" r="70"/></svg><div class="center" id="ringCenter"></div></div>
+        </div>
+      </section>
 
-      <div class="group first loop" id="loop"></div>
-      <div class="group" id="details"></div>
+      <section>
+        <h2>The loop<span class="r">Check finds it. Fix repairs and proves it. Monitor keeps it true.</span></h2>
+        <div class="loop" id="loop"></div>
+      </section>
 
-      <h2>Waiting for your approval</h2>
-      <div class="group" id="inbox"></div>
+      <section>
+        <div class="sides">
+          <div><h2>Where Stripe and your app disagree<span class="r" id="compareN"></span></h2><div class="card" id="compare"></div></div>
+          <div><h2>Waiting for your approval</h2><div class="card" id="inbox"></div></div>
+        </div>
+      </section>
 
-      <h2>Settings</h2>
-      <div class="group" id="settings"></div>
+      <section>
+        <h2>Receipts</h2>
+        <div class="figures" id="figures"></div>
+        <p class="note">Revenue recovered: not measured. Akeso does not see your payouts, so it will not invent a number.</p>
+      </section>
 
-      <h2>Receipts</h2>
-      <div class="group" id="totals"></div>
-      <div class="group" id="history"></div>
+      <section>
+        <h2>What Akeso can touch</h2>
+        <div class="bound" id="bound"></div>
+      </section>
 
-      <p class="foot">Akeso restores access on its own. It never removes access on its own.</p>
-    </section>
+      <section>
+        <h2>Ledger<span class="r" id="ledgerWhere"></span><span class="seal none" id="seal2" style="margin-left:14px"></span></h2>
+        <div class="card"><div class="timeline" id="timeline"></div><p class="foot">Each entry is hashed with the one before it. This page recomputes every hash in your browser; an edited entry shows as not verified.</p></div>
+      </section>
+
+      <p class="doctrine">Akeso restores access on its own. It never removes access on its own.</p>
+    </div>
   </main>`;
 
   return `<!doctype html>
