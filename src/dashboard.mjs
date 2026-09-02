@@ -54,20 +54,22 @@ const CSS = `
   .wrap { max-width:760px; margin:0 auto; padding:0 24px; }
 
   .nav { position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px); border-bottom:1px solid var(--line); }
-  .nav .wrap { display:flex; align-items:center; gap:22px; height:48px; }
+  .nav .wrap { display:flex; align-items:center; gap:20px; height:48px; max-width:1080px; }
   .nav .brand { font-weight:600; letter-spacing:-.01em; }
-  .nav nav { display:flex; gap:18px; overflow-x:auto; scrollbar-width:none; white-space:nowrap; font-size:13px; color:var(--ink2); padding:6px 0; }
+  .nav nav { display:flex; gap:16px; overflow-x:auto; scrollbar-width:none; white-space:nowrap; font-size:13px; color:var(--ink2); padding:6px 0; min-width:0; }
   .nav nav::-webkit-scrollbar { display:none; }
   .nav nav a[aria-current] { color:var(--ink); }
   .nav nav a .n { color:var(--ink3); margin-left:4px; font-size:12px; }
-  .nav .seal { margin-left:auto; font-size:12px; color:var(--ink2); white-space:nowrap; }
-  .nav .seal.bad { color:var(--bad); }
+  .nav .acts { margin-left:auto; display:flex; gap:14px; align-items:center; font-size:13px; white-space:nowrap; }
+  .nav .acts button, .nav .acts label { color:var(--link); cursor:pointer; border:0; background:none; font:inherit; padding:0; }
+  .nav .acts .status { color:var(--ink2); } .nav .acts .status.bad { color:var(--bad); }
+  .nav .seal { font-size:12px; color:var(--ink2); white-space:nowrap; display:flex; align-items:center; gap:7px; }
+  .nav .seal::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--ok); }
+  .nav .seal.bad { color:var(--bad); } .nav .seal.bad::before { background:var(--bad); }
+  .nav .seal.none::before { background:var(--ink3); }
+  .nav nav a .n.hot { color:var(--wait); }
 
-  .demo { display:flex; gap:18px; align-items:center; flex-wrap:wrap; padding:14px 0 0; font-size:13px; color:var(--ink2); }
-  .demo button, .demo label { color:var(--link); cursor:pointer; border:0; background:none; font:inherit; padding:0; }
-  .demo .faint { color:var(--ink3); margin-left:-8px; }
-  .demo .status.bad { color:var(--bad); }
-  .panel { display:none; margin-top:14px; background:var(--group); border-radius:12px; padding:16px 18px; }
+  .panel { display:none; margin-top:20px; background:var(--group); border-radius:12px; padding:16px 18px; }
   .panel.on { display:block; }
   .panel .tabs { display:flex; gap:16px; font-size:13px; color:var(--ink2); margin-bottom:12px; flex-wrap:wrap; }
   .panel .tabs button { border:0; background:none; font:inherit; color:inherit; padding:0; cursor:pointer; }
@@ -144,7 +146,10 @@ const CSS = `
     .nav nav { mask-image:linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image:linear-gradient(90deg, #000 85%, transparent); }
     h2.label { padding:0 14px; } .row { padding:12px 14px; }
     th:first-child, td:first-child { padding-left:14px; } th:last-child, td:last-child { padding-right:14px; }
-    .hide-s, .nav .seal, h2.label .r, .demo .faint { display:none; }
+    .hide-s, .nav .seal, h2.label .r { display:none; }
+    .nav .wrap { flex-wrap:wrap; height:auto; padding-top:10px; padding-bottom:4px; gap:10px 16px; }
+    .nav nav { order:3; width:100%; padding:2px 0 8px; }
+    .nav .acts { margin-left:auto; }
     td .sub { display:block; }
     .row .v { white-space:normal; max-width:58%; }
     .seal2 { display:inline; }
@@ -191,6 +196,7 @@ const JS = String.raw`
     var matched = sweep && sweep.comparison && sweep.comparison.counts ? (sweep.comparison.counts.matched || 0) : 0;
     var scenarios = (check && check.scenarioResults) || [];
     var failed = scenarios.filter(function (r) { return r.outcome === "fail"; }).length;
+    var passed = scenarios.filter(function (r) { return r.outcome === "pass"; }).length;
 
     var restores = kinds("restore");
     var restored = restores.filter(function (e) { return e.direction === "grant" && e.result === "applied"; });
@@ -248,17 +254,17 @@ const JS = String.raw`
     else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Accounts that drifted before the fix are still wrong. Monitor compares them with Stripe.", c: "npx akeso-check monitor", m: esc(grade), tone: "ok" };
 
     /* ---- render ---- */
+    function hero(id, m, tone, text) { var mk = $("mark-" + id), h = $("h-" + id); if (!mk || !h) return; mk.className = "mark " + (tone || ""); mk.innerHTML = m; h.textContent = text; }
     var app = D.appName || "Your app";
     document.querySelectorAll(".appName").forEach(function (n) { n.textContent = app; });
     document.title = "Akeso · " + app;
-    $("verdict").textContent = step.h;
-    var mark = $("mark"); mark.className = "mark " + (step.tone || ""); mark.innerHTML = step.m;
+    hero("overview", step.m, step.tone, step.h);
     $("lead").textContent = step.w || "";
     $("lead").hidden = !step.w;
     $("next").innerHTML = step.c ? '<code>' + esc(step.c) + '</code><button data-copy="' + esc(step.c) + '">Copy</button>' : "";
     $("next").hidden = !step.c;
 
-    var na = $("count-approvals"); na.textContent = waiting.length ? String(waiting.length) : "";
+    var na = $("count-approvals"); na.textContent = waiting.length ? String(waiting.length) : ""; na.className = "n" + (waiting.length ? " hot" : "");
     na.parentNode.setAttribute("aria-label", waiting.length ? "Approvals, " + waiting.length + " waiting" : "Approvals");
     var nl = $("count-ledger"); nl.textContent = L.length ? String(L.length) : "";
     nl.parentNode.setAttribute("aria-label", L.length ? "Ledger, " + L.length + " entries" : "Ledger");
@@ -301,13 +307,33 @@ const JS = String.raw`
       return "";
     }
     function dotFor(a) { return a.verdict === "locked_out" ? (fixedSince(a) ? "ok" : "bad") : a.verdict === "still_entitled" ? "wait" : ""; }
-    function accountRow(a) { return '<tr><td><span class="dot ' + dotFor(a) + '" aria-hidden="true"></span><span class="code">' + esc(a.account) + '</span><span class="sub">' + esc(meaning(a)) + "</span></td><td>" + esc(stripeWord(a)) + "</td><td>" + esc(appWord(a)) + '</td><td class="mute hide-s">' + esc(meaning(a)) + '</td><td class="num">' + esc(money(a.priceMonthly)) + "</td></tr>"; }
+    function accountRow(a) { var price = money(a.priceMonthly); return '<tr><td><span class="dot ' + dotFor(a) + '" aria-hidden="true"></span><span class="code">' + esc(a.account) + '</span><span class="sub">Stripe: ' + esc(stripeWord(a)) + " · App: " + esc(appWord(a)) + (price ? " · " + price + "/mo" : "") + "<br>" + esc(meaning(a)) + '</span></td><td class="hide-s">' + esc(stripeWord(a)) + '</td><td class="hide-s">' + esc(appWord(a)) + '</td><td class="mute hide-s">' + esc(meaning(a)) + '</td><td class="num hide-s">' + esc(price) + "</td></tr>"; }
     var shown = stillWrong.concat(fixedNow, noVerdict, notInStripe);
     var rows = shown.map(accountRow).join("");
     if (sweep && matched > 0 && agreeing > 0) rows += '<tr><td colspan="5" class="mute">' + agreeing + " agree</td></tr>";
     $("accounts").innerHTML = rows || '<tr><td colspan="5" class="mute">' + (sweep ? "Nothing to compare on the last sweep." : "No sweep has run yet.") + "</td></tr>";
     $("accountsN").textContent = sweep ? matched + " compared" : "";
     $("accountsWhen").textContent = sweep ? when(sweep.at) : "";
+
+    /* one verdict per view, same shape as the overview */
+    var notGraded = scenarios.length - passed - failed;
+    if (!check) hero("check", DASH, "", "Not checked yet.");
+    else if (!ranLive) hero("check", DASH, "", "Code read. Not yet run.");
+    else if (grade === "?") hero("check", "?", "", "The Check could not finish. No grade.");
+    else hero("check", esc(grade), passing ? "ok" : "bad", "Grade " + grade + ". " + (passing ? passed + " of " + scenarios.length + " passed" + (notGraded ? ", " + notGraded + " not graded" : "") : failed + " of " + scenarios.length + " fail") + ".");
+    var nFiles = fix ? (fix.files || []).length : 0;
+    if (!fix) hero("fix", states.fix === "notneeded" ? CHECK : DASH, states.fix === "notneeded" ? "ok" : "", states.fix === "notneeded" ? "Nothing needed fixing." : "No fix written yet.");
+    else if (provenFix) hero("fix", CHECK, "ok", plural(nFiles, "file", "files") + " written. Re-test passed.");
+    else if (!passing) hero("fix", CROSS, "bad", plural(nFiles, "file", "files") + " written. Check still fails.");
+    else hero("fix", DASH, "wait", plural(nFiles, "file", "files") + " written. Not re-tested.");
+    if (!sweep) hero("monitor", DASH, "", "No sweep yet.");
+    else if (sweep.couldNotRun) hero("monitor", "?", "", "The last sweep could not run.");
+    else if (matched === 0) hero("monitor", "?", "", "No account could be compared.");
+    else if (stillWrong.length) hero("monitor", String(stillWrong.length), "wait", plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.");
+    else hero("monitor", CHECK, "ok", "Stripe and your app agree.");
+    if (waiting.length) hero("approvals", String(waiting.length), "wait", plural(waiting.length, "removal needs", "removals need") + " your approval."); else hero("approvals", CHECK, "ok", "No removals waiting.");
+    if (restores.length) hero("receipts", String(restored.length), restored.length ? "ok" : "", plural(restored.length, "account", "accounts") + " restored, " + removed.length + " removed."); else hero("receipts", DASH, "", "No changes yet.");
+    hero("ledger", DASH, "", L.length ? plural(L.length, "entry", "entries") + "." : "The ledger is empty.");
 
     /* check view */
     $("scenarios").innerHTML = scenarios.length ? scenarios.map(function (r) { var o = r.outcome; return row("", o === "pass" ? "ok" : o === "fail" ? "bad" : "", esc(NAMES[r.id] || r.id), null, o === "pass" ? "Passed" : o === "fail" ? "Failed" : o === "reported" ? "Not graded" : cap(o)); }).join("") : empty(check ? "Read, not run." : "Not run yet.");
@@ -336,8 +362,8 @@ const JS = String.raw`
       return row("", null, '<span class="code">' + esc(e.seq || "") + "</span>&nbsp;&nbsp;" + esc(e.kind === "unreadable" ? "Line " + e.line : cap(e.kind)), esc(sum), esc(when(e.at)));
     }).join("") : empty("The ledger is empty.");
 
-    var seal = $("seal"); seal.className = "seal"; seal.textContent = L.length ? "Verifying" : "No ledger";
-    function setSeal(text, bad) { seal.textContent = text; seal.className = "seal" + (bad ? " bad" : ""); var s2 = $("seal2"); if (s2) { s2.textContent = " · " + text; s2.className = "seal2" + (bad ? " bad" : ""); } }
+    var seal = $("seal"); seal.className = "seal none"; seal.textContent = L.length ? "Verifying" : "No ledger";
+    function setSeal(text, bad, none) { seal.textContent = text; seal.className = "seal" + (bad ? " bad" : none ? " none" : ""); document.querySelectorAll(".seal2").forEach(function (s2) { s2.textContent = " · " + text; s2.className = "seal2" + (bad ? " bad" : ""); }); if (L.length) hero("ledger", bad ? CROSS : none ? DASH : CHECK, bad ? "bad" : none ? "" : "ok", bad ? text + "." : plural(L.length, "entry", "entries") + (none ? ", not verified." : ", verified.")); }
     var badLine = L.find(function (e) { return e.kind === "unreadable"; });
     if (badLine) setSeal("Line " + badLine.line + " unreadable", true);
     else if (L.length && window.crypto && crypto.subtle) {
@@ -353,7 +379,7 @@ const JS = String.raw`
         }
         setSeal(broken ? "Entry " + broken + " does not verify" : plural(L.length, "entry", "entries") + " · verified", !!broken);
       })();
-    } else if (L.length) { setSeal(plural(L.length, "entry", "entries") + " · not verified", false); }
+    } else if (L.length) { setSeal(plural(L.length, "entry", "entries") + " · not verified", false, true); }
 
     /* site only: load a ledger file, run panel */
     var file = $("ledgerFile"); if (file) file.addEventListener("change", function () {
@@ -362,13 +388,13 @@ const JS = String.raw`
         var n = 0, rows = t.split("\n").filter(function (l) { return l.trim(); }).map(function (l) { n++; try { var o = JSON.parse(l); return (o && typeof o === "object") ? o : { kind: "unreadable", line: n }; } catch (x) { return { kind: "unreadable", line: n }; } });
         var real = rows.filter(function (e) { return e.kind !== "unreadable" && e.hash; });
         var status = $("status");
-        if (!real.length) { if (status) { status.textContent = "That file is not an Akeso ledger. Showing the demo."; status.className = "status bad"; } return; }
+        if (!real.length) { if (status) { status.textContent = "Not an Akeso ledger"; status.className = "status bad"; status.title = "No entry in that file carries a hash. Showing the demo."; } return; }
         var named = rows.find(function (e) { return e.appName || e.app; });
         window.AKESO = Object.assign({}, D, { ledger: rows, appName: (named && (named.appName || named.app)) || "Your app", demo: false, fileName: f.name });
         document.body.innerHTML = D.shell; render(); route();
       });
     });
-    var status0 = $("status"); if (status0 && D.demo === false) { status0.textContent = esc(D.fileName || "Your ledger") + " · " + plural(L.length, "entry", "entries"); status0.className = "status"; }
+    var status0 = $("status"); if (status0) { if (D.demo === false) { status0.textContent = D.fileName || "Your ledger"; status0.className = "status"; status0.title = "Read in this tab. Never uploaded."; } else { status0.textContent = ""; } }
     var runBtn = $("runBtn"), panel = $("runPanel"); if (runBtn && panel) runBtn.addEventListener("click", function () { var open = !panel.classList.contains("on"); panel.classList.toggle("on", open); runBtn.setAttribute("aria-expanded", String(open)); });
     var tabs = $("tabs"); if (tabs) {
       var P = "Run npx akeso-check here, follow its next steps, and explain the report to me in plain English.";
@@ -394,8 +420,8 @@ const JS = String.raw`
 export function renderDashboard({ ledger = [], appName = "this app", root = null, hosted = false, demo = false } = {}) {
   const data = JSON.stringify({ ledger, appName, demo, scenarioNames: SCENARIO_NAMES }).replaceAll("</", "<\\/");
 
+  const acts = hosted ? `<span class="acts"><span class="status" id="status"></span><button type="button" id="runBtn" aria-expanded="false" aria-controls="runPanel">How to run it</button><label title="Read in this tab. Never uploaded.">Load your ledger<input type="file" id="ledgerFile" class="sr" accept=".jsonl,application/json,text/plain"></label></span>` : `<span class="acts"></span>`;
   const runPanel = hosted ? `
-    <div class="demo"><span class="status" id="status">${demo ? "Demo: a real run on a test app." : ""}</span><button type="button" id="runBtn" aria-expanded="false" aria-controls="runPanel">How to run it</button><label>Load your ledger<input type="file" id="ledgerFile" class="sr" accept=".jsonl,application/json,text/plain"></label><span class="faint">Never uploaded.</span></div>
     <div class="panel" id="runPanel">
       <div class="tabs" id="tabs" role="tablist"><button role="tab" aria-selected="true" data-tool="terminal">Terminal</button><button role="tab" aria-selected="false" data-tool="claude">Claude Code</button><button role="tab" aria-selected="false" data-tool="cursor">Cursor</button><button role="tab" aria-selected="false" data-tool="codex">Codex</button><button role="tab" aria-selected="false" data-tool="lovable">Lovable / Bolt / v0</button></div>
       <ol id="steps" hidden>
@@ -403,10 +429,11 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       </ol>
       <div class="cmd" style="margin:0"><code id="cmd">npx akeso-check</code><button id="cmdCopy" data-copy="npx akeso-check">Copy</button></div>
       <p class="after" id="stepsAfter" hidden>When it finishes, .akeso/ledger.jsonl is in your project. Load it above.</p>
-      <p class="after">Free, runs on your machine, no dependencies. Source: <a href="https://github.com/jacekimmy/akeso-check">github.com/jacekimmy/akeso-check</a></p>
+      <p class="after">Free, runs on your machine, no dependencies. A ledger you load here is read in this tab and never uploaded. Source: <a href="https://github.com/jacekimmy/akeso-check">github.com/jacekimmy/akeso-check</a></p>
     </div>` : "";
 
-  const eyebrow = `<p class="app"><span class="appName"></span><span class="seal2" id="seal2"></span></p>`;
+  const eyebrow = (id) => `<p class="app"><span class="appName"></span><span class="seal2"></span></p>
+      <div class="hero"><div class="mark" id="mark-${id}" aria-hidden="true"></div><h1 id="h-${id}"></h1></div>`;
 
   const shell = `<header class="nav"><div class="wrap">
     <span class="brand">Akeso</span>
@@ -419,14 +446,14 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <a href="#receipts" data-view="receipts">Receipts</a>
       <a href="#ledger" data-view="ledger">Ledger<span class="n" id="count-ledger" aria-hidden="true"></span></a>
     </nav>
+    ${acts}
     <span class="seal" id="seal" aria-live="polite"></span>
   </div></header>
   <main class="wrap">
     ${runPanel}
 
     <section class="view on" id="v-overview">
-      ${eyebrow}
-      <div class="hero"><div class="mark" id="mark" aria-hidden="true"></div><h1 id="verdict"></h1></div>
+      ${eyebrow("overview")}
       <p class="lead" id="lead"></p>
       <div class="cmd" id="next"></div>
 
@@ -442,41 +469,36 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
     </section>
 
     <section class="view" id="v-check">
-      ${eyebrow}
-      <h1>Check</h1>
-      <h2 class="label">Ten billing situations<span class="r" id="checkMeta"></span></h2>
+      ${eyebrow("check")}
+      <h2 class="label">Ten situations<span class="r" id="checkMeta"></span></h2>
       <div class="group" id="scenarios"></div>
     </section>
 
     <section class="view" id="v-fix">
-      ${eyebrow}
-      <h1>Fix</h1>
+      ${eyebrow("fix")}
       <h2 class="label">Files written<span class="r" id="fixMeta"></span></h2>
       <div class="group" id="files"></div>
       <p class="foot" id="fixProof"></p>
     </section>
 
     <section class="view" id="v-monitor">
-      ${eyebrow}
-      <h1>Monitor</h1>
+      ${eyebrow("monitor")}
       <h2 class="label">Sweeps</h2>
       <div class="group" id="sweeps"></div>
       <h2 class="label">Accounts, last sweep<span class="r"><span id="accountsN"></span> &nbsp; <span id="accountsWhen"></span></span></h2>
-      <div class="group"><table><thead><tr><th>Account</th><th>Stripe says</th><th>App says</th><th class="hide-s">Meaning</th><th class="num">Monthly</th></tr></thead><tbody id="accounts"></tbody></table></div>
+      <div class="group"><table><thead><tr><th>Account</th><th class="hide-s">Stripe says</th><th class="hide-s">App says</th><th class="hide-s">Meaning</th><th class="num hide-s">Monthly</th></tr></thead><tbody id="accounts"></tbody></table></div>
       <div id="coverage"></div>
     </section>
 
     <section class="view" id="v-approvals">
-      ${eyebrow}
-      <h1>Approvals</h1>
+      ${eyebrow("approvals")}
       <h2 class="label">Waiting for your approval</h2>
       <div class="group" id="queue"></div>
       <p class="foot">Nothing here is removed until you approve it.</p>
     </section>
 
     <section class="view" id="v-receipts">
-      ${eyebrow}
-      <h1>Receipts</h1>
+      ${eyebrow("receipts")}
       <h2 class="label">Changes made</h2>
       <div class="group" id="restores"></div>
       <h2 class="label">Not counted</h2>
@@ -484,8 +506,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
     </section>
 
     <section class="view" id="v-ledger">
-      ${eyebrow}
-      <h1>Ledger</h1>
+      ${eyebrow("ledger")}
       <h2 class="label">${hosted ? "Entries" : escapeHtml(root ? `${root}/.akeso/ledger.jsonl` : ".akeso/ledger.jsonl")}</h2>
       <div class="group" id="entries"></div>
       <p class="foot">Each entry is hashed with the one before it. This page recomputes every hash; an edited entry shows as not verified.</p>
