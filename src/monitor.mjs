@@ -266,6 +266,15 @@ export async function runSweep({
       removalsHeld: drift.removals.filter((row) => row.action === "hold").length,
       reportOnly: drift.unmatched.length,
     },
+    /* The per-account truth, so the dashboard can show what Stripe said and
+       what the app said for each account, side by side. Capped so a huge app
+       cannot bloat its own ledger; the counts above are always complete. */
+    accounts: [
+      ...comparison.payingButLockedOut.map((r) => ({ account: r.account, stripe: r.status, app: false, verdict: "locked_out", priceMonthly: r.priceMonthly ?? null })),
+      ...comparison.canceledButEntitled.map((r) => ({ account: r.account, stripe: r.status, app: true, verdict: "still_entitled", priceMonthly: r.priceMonthly ?? null })),
+      ...(comparison.noConclusion || []).map((r) => ({ account: r.account, stripe: r.status, app: null, verdict: "no_conclusion", priceMonthly: r.priceMonthly ?? null })),
+      ...comparison.entitledWithNoSubscription.map((r) => ({ account: r.account, stripe: null, app: true, verdict: "no_subscription", priceMonthly: null })),
+    ].slice(0, 500),
     alerts,
   }));
 
