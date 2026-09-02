@@ -182,6 +182,28 @@ const CSS = `
   .foot { margin:28px 0 0; font-size:14px; color:var(--ink3); max-width:60ch; }
   .doctrine { margin-top:88px; text-align:center; color:var(--ink2); font-size:15px; }
 
+  /* screens */
+  body.locked .nav { background:transparent; }
+  #lock { min-height:calc(100vh - 64px); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px 0 64px; }
+  #lock .ring { width:300px; height:300px; margin-bottom:44px; }
+  #lock .ring .arc { animation:draw 1.6s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes draw { from { stroke-dasharray:0 1000; } }
+  #lock h1 { max-width:16ch; font-size:56px; }
+  #lock .btn { margin-top:36px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; height:56px; padding:0 30px; border-radius:999px; background:var(--ink); color:var(--bg); font:inherit; font-size:17px; font-weight:600; border:0; cursor:pointer; letter-spacing:-.01em; }
+  .btn.sec { background:var(--card); color:var(--ink); box-shadow:var(--shadow); height:48px; font-size:15px; }
+  #lock .tiny { margin-top:22px; font-size:14px; }
+  .conn { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; margin-top:44px; }
+  .conn .card { display:flex; flex-direction:column; gap:14px; min-height:260px; }
+  .conn .glyph { width:52px; height:52px; border-radius:14px; background:var(--tint); display:flex; align-items:center; justify-content:center; }
+  .conn .glyph svg { width:26px; height:26px; }
+  .conn .t { font-size:22px; font-weight:700; letter-spacing:-.02em; }
+  .conn .d { font-size:15px; color:var(--ink2); }
+  .conn .fill { flex:1; }
+  .conn .cs { font-size:14px; color:var(--ink2); display:flex; align-items:center; gap:8px; }
+  .conn .cs i { width:9px; height:9px; border-radius:50%; background:var(--none); display:inline-block; } .conn .cs i.ok { background:var(--ok); }
+  .alt { margin-top:44px; font-size:15px; color:var(--ink2); }
+
   /* onboarding */
   .steps3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; margin-top:48px; }
   .steps3 .card { display:flex; flex-direction:column; gap:14px; min-height:240px; }
@@ -201,11 +223,13 @@ const CSS = `
     .hero { grid-template-columns:1fr; gap:28px; } .ring { width:150px; height:150px; } .ring .center { font-size:44px; } .ring .center svg { width:44px; height:44px; }
     h1 { font-size:32px; } .lead { font-size:16px; }
     .loop { grid-template-columns:1fr; } .loop::before { display:none; } .loop .step { min-height:0; }
-    .sides, .figures, .bound, .steps3 { grid-template-columns:1fr; }
+    .sides, .figures, .bound, .steps3, .conn { grid-template-columns:1fr; }
+    #lock .ring { width:200px; height:200px; } #lock h1 { font-size:34px; }
     .figure .n { font-size:44px; }
     .nav .acts { gap:14px; font-size:13px; }
     h2 .r { display:none; }
     .nav .wrap { flex-wrap:wrap; height:auto; padding-top:12px; padding-bottom:12px; gap:10px 16px; }
+    .nav { position:static; backdrop-filter:none; -webkit-backdrop-filter:none; }
   }
 `;
 
@@ -228,11 +252,17 @@ const JS = String.raw`
   function render() {
     var D = window.AKESO || {};
     var onboarding = !!D.onboarding;
-    var st = $("start"); if (st) st.hidden = !onboarding; $("page").hidden = onboarding;
+    var screen = onboarding ? (D.screen || "lock") : "page";
+    ["lock", "connect", "paste"].forEach(function (id) { var el = $(id); if (el) el.hidden = screen !== id; });
+    $("page").hidden = onboarding;
+    document.body.classList.toggle("locked", screen === "lock");
     var status = $("status"); if (status) { status.textContent = D.demo ? "Demo" : (D.fileName || ""); status.className = "status"; status.title = D.demo ? "A real run on a test app. Load your own ledger to replace it." : "Read in this tab. Never uploaded."; }
-    var demoLink = $("demoLink"); if (demoLink) demoLink.hidden = !onboarding;
+    var demoLink = $("demoLink"); if (demoLink) demoLink.hidden = !onboarding || screen === "lock";
+    var loadLink = $("loadLink"); if (loadLink) loadLink.hidden = screen === "lock";
+    var conns = D.connections || {}; document.querySelectorAll("[data-conn]").forEach(function (c) { var on = !!conns[c.dataset.conn]; c.querySelector(".cs").innerHTML = '<i class="' + (on ? "ok" : "") + '"></i>' + (on ? "Connected" : "Not connected"); });
     var backLink = $("backLink"); if (backLink) backLink.hidden = onboarding;
-    if (onboarding) { $("seal").textContent = "No ledger loaded"; $("seal").className = "seal none"; document.title = "Akeso"; return; }
+    if (onboarding) { $("seal").textContent = "Nothing checked yet"; $("seal").className = "seal none"; $("seal").hidden = screen === "lock"; document.title = "Akeso"; return; }
+    $("seal").hidden = false;
 
     var L = Array.isArray(D.ledger) ? D.ledger.filter(function (e) { return e && typeof e === "object"; }) : [];
     function kinds(k) { return L.filter(function (e) { return e.kind === k; }); }
@@ -298,9 +328,9 @@ const JS = String.raw`
     else if (!ranLive) step = { h: "Code read. Not yet run.", w: "Run it against your running app to get a grade.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: DASH, tone: "", arc: 0.15, sub: "read only" };
     else if (grade && grade !== "A" && grade !== "?") step = (fix && fix.seq > check.seq) ? { h: "Fix applied. The Check still fails.", w: "", c: "npx akeso-check fix --show", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" } : { h: "Grade " + grade + ". " + failed + " of " + scenarios.length + " situations fail.", w: "", c: "npx akeso-check fix", m: esc(grade), tone: "bad", arc: passed / Math.max(1, scenarios.length), sub: failed + " of " + scenarios.length + " fail" };
     else if (grade === "?") step = { h: "The Check could not finish. No grade.", w: "Start the app and run it again.", c: "npx akeso-check --lifecycle-url http://localhost:3000", m: "?", tone: "", arc: 0, sub: "no grade" };
-    else if (sweep && sweep.couldNotRun) step = { h: "The last sweep could not run.", w: String(sweep.couldNotRun).replace(/\s+/g, " ").slice(0, 160), c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "no verdict" };
+    else if (sweep && sweep.couldNotRun) step = { h: "The last customer check could not run.", w: String(sweep.couldNotRun).replace(/\s+/g, " ").slice(0, 160), c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "no verdict" };
     else if (sweep && matched === 0) step = { h: "No account could be compared.", w: "Stripe and your app use different customer ids. Pass your account id as client_reference_id at checkout.", c: "npx akeso-check monitor", m: "?", tone: "", arc: 0, sub: "0 compared" };
-    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your approval.", w: "", c: "npx akeso-check approvals", m: String(waiting.length), tone: "wait", arc: 1, sub: "waiting" };
+    else if (sweep && waiting.length) step = { h: plural(waiting.length, "removal needs", "removals need") + " your OK.", w: "", c: "npx akeso-check approvals", m: String(waiting.length), tone: "wait", arc: 1, sub: "waiting" };
     else if (sweep) step = stillWrong.length === 0 ? { h: "Stripe and your app agree.", w: "", c: "npx akeso-check statement", m: CHECK, tone: "ok", arc: 1, sub: matched + " agree" } : { h: plural(stillWrong.length, "account disagrees", "accounts disagree") + " with Stripe.", w: "", c: "npx akeso-check monitor", m: String(stillWrong.length), tone: "wait", arc: agreeing / Math.max(1, matched), sub: "of " + matched };
     else step = { h: provenFix ? "The fix passed its re-test." : "Your billing code passes.", w: "Now compare today's customers with Stripe.", c: "npx akeso-check monitor", m: esc(grade), tone: "ok", arc: 1, sub: "grade" };
 
@@ -341,7 +371,7 @@ const JS = String.raw`
     function appWord(a) { return fixedSince(a) ? "Has access" : a.app == null ? "Unknown" : a.app ? "Has access" : "No access"; }
     function meaning(a) {
       if (a.verdict === "locked_out") return fixedSince(a) ? "Restored" : "Locked out";
-      if (a.verdict === "still_entitled") return queuedFor[a.account] ? "Awaiting your approval" : "Still has access";
+      if (a.verdict === "still_entitled") return queuedFor[a.account] ? "Needs your OK" : "Still has access";
       if (a.verdict === "no_conclusion") return "No verdict";
       return "Left alone";
     }
@@ -363,20 +393,21 @@ const JS = String.raw`
     /* ---- the boundary ---- */
     var fw = check && (check.framework || (check.detection && check.detection.framework));
     $("bound").innerHTML =
-      '<div class="card z"><div class="glyph">' + LOCK + '</div><div class="t">Your machine</div><div class="d">Code, keys and ledger stay here.</div><div class="s"><i class="ok"></i>Nothing leaves</div></div>' +
+      '<div class="card z"><div class="glyph">' + LOCK + '</div><div class="t">Your computer</div><div class="d">Your code, keys and results stay here.</div><div class="s"><i class="ok"></i>Nothing leaves</div></div>' +
       '<div class="card z"><div class="glyph">' + EYE + '</div><div class="t">Stripe</div><div class="d">Read-only key. Never written to, never stored.</div><div class="s"><i class="' + (sweep && !sweep.couldNotRun ? "ok" : sweep ? "bad" : "") + '"></i>' + (sweep && !sweep.couldNotRun ? "Connected" : sweep ? "Last read failed" : "Not yet read") + "</div></div>" +
       '<div class="card z"><div class="glyph">' + KEY + '</div><div class="t">Your app' + (fw ? ' <span style="font-weight:400;color:var(--ink3);font-size:14px">' + esc(cap(String(fw).replace(/-/g, " "))) + "</span>" : "") + '</div><div class="d">Two signed endpoints. Delete one file to revoke.</div><div class="s"><i class="' + (covered ? "ok" : fix ? "wait" : "") + '"></i>' + (covered ? "Rules confirmed" : fix ? "Rules not confirmed" : "Not connected") + "</div></div>";
 
     /* ---- the ledger ---- */
     $("timeline").innerHTML = L.length ? L.slice().reverse().map(function (e) {
       var t = e.kind === "check" ? (e.grade === "A" ? "ok" : e.grade && e.grade !== "?" ? "bad" : "") : e.kind === "fix" ? "wait" : e.kind === "sweep" ? (e.couldNotRun ? "bad" : e.comparison && e.comparison.clean ? "ok" : "wait") : e.kind === "restore" ? (e.result === "applied" ? "ok" : "bad") : e.kind === "approval" ? "wait" : e.kind === "certify" ? "ok" : e.kind === "unreadable" ? "bad" : "";
-      var sum = e.kind === "check" ? (e.grade ? "Grade " + e.grade : "Code read") : e.kind === "fix" ? plural((e.files || []).length, "file written", "files written") : e.kind === "sweep" ? (e.couldNotRun ? "Could not run" : (e.comparison && e.comparison.counts ? e.comparison.counts.matched + " compared" : "")) : e.kind === "restore" ? (e.direction === "grant" ? "Restored " : "Removed ") + (e.account || "") + (e.result === "applied" ? "" : " · " + e.result) : e.kind === "approval" ? "Removal " + (e.state === "cancelled" ? "canceled" : e.state || "") + " " + (e.account || "") : e.kind === "certify" ? "Access rules confirmed" : e.kind === "unreadable" ? "Unreadable line" : "";
-      return '<div class="entry ' + t + (e.kind === "unreadable" ? " unread" : "") + '"><div class="k"><b>' + esc(e.kind === "unreadable" ? "Line " + e.line : cap(e.kind)) + "</b><span>" + esc(sum) + '</span></div><div class="t">' + esc(when(e.at)) + "</div></div>";
-    }).join("") : '<p class="quiet">The ledger is empty.</p>';
+      var sum = e.kind === "check" ? (e.grade ? "Grade " + e.grade : "Code read") : e.kind === "fix" ? plural((e.files || []).length, "file", "files") : e.kind === "sweep" ? (e.couldNotRun ? "Could not run" : (e.comparison && e.comparison.counts ? e.comparison.counts.matched + " compared" : "")) : e.kind === "restore" ? (e.account || "") + (e.result === "applied" ? "" : " · " + e.result) : e.kind === "approval" ? (e.account || "") : e.kind === "unreadable" ? "Could not read" : "";
+      var word = { check: "Checked", fix: "Fixed", sweep: "Compared customers", restore: e.direction === "grant" ? "Access restored" : "Access removed", approval: e.state === "queued" ? "Needs your OK" : e.state === "approved" ? "Removal approved" : "Removal canceled", certify: "Rules confirmed", unreadable: "Line " + e.line }[e.kind] || cap(e.kind);
+      return '<div class="entry ' + t + (e.kind === "unreadable" ? " unread" : "") + '"><div class="k"><b>' + esc(word) + "</b><span>" + esc(sum) + '</span></div><div class="t">' + esc(when(e.at)) + "</div></div>";
+    }).join("") : '<p class="quiet">Nothing yet.</p>';
     $("ledgerWhere").textContent = D.root ? D.root + "/.akeso/ledger.jsonl" : (D.fileName || "");
 
     /* ---- chain ---- */
-    var seal = $("seal"); seal.className = "seal none"; seal.textContent = L.length ? "Verifying" : "No ledger";
+    var seal = $("seal"); seal.className = "seal none"; seal.textContent = L.length ? "Verifying" : "No results";
     function setSeal(text, bad, none) { seal.textContent = text; seal.className = "seal" + (bad ? " bad" : none ? " none" : ""); var s2 = $("seal2"); if (s2) { s2.textContent = text; s2.className = "seal" + (bad ? " bad" : none ? " none" : ""); } }
     var badLine = L.find(function (e) { return e.kind === "unreadable"; });
     if (badLine) setSeal("Line " + badLine.line + " unreadable", true);
@@ -391,9 +422,9 @@ const JS = String.raw`
           if (h !== e.hash) { broken = e.seq || i + 1; break; }
           prev = e.hash;
         }
-        setSeal(broken ? "Entry " + broken + " does not verify" : plural(L.length, "entry", "entries") + " · verified", !!broken);
+        setSeal(broken ? "Record " + broken + " was changed" : plural(L.length, "record", "records") + " · verified", !!broken);
       })();
-    } else if (L.length) { setSeal(plural(L.length, "entry", "entries") + " · not verified", false, true); }
+    } else if (L.length) { setSeal(plural(L.length, "record", "records") + " · not verified", false, true); }
   }
 
   var LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
@@ -409,7 +440,7 @@ const JS = String.raw`
     var f = e.target.files[0]; if (!f) return;
     f.text().then(function (t) {
       var rows = loadRows(t); var D = window.AKESO || {};
-      if (!rows.some(function (r) { return r.kind !== "unreadable" && r.hash; })) { var st = $("status"); if (st) { st.textContent = "Not an Akeso ledger"; st.className = "status bad"; st.title = "No entry in that file carries a hash."; } return; }
+      if (!rows.some(function (r) { return r.kind !== "unreadable" && r.hash; })) { var st = $("status"); if (st) { st.textContent = "Not an Akeso results file"; st.className = "status bad"; st.title = "Pick .akeso/ledger.jsonl from your project."; } return; }
       var named = rows.find(function (r) { return r.appName || r.app; });
       window.AKESO = Object.assign({}, D, { ledger: rows, appName: (named && (named.appName || named.app)) || "Your app", demo: false, onboarding: false, fileName: f.name, root: null });
       render(); window.scrollTo(0, 0);
@@ -424,7 +455,8 @@ const JS = String.raw`
       return;
     }
     if (e.target.id === "demoLink") { e.preventDefault(); var D = window.AKESO || {}; window.AKESO = Object.assign({}, D, { ledger: D.demoLedger || [], appName: D.demoName || "Demo app", demo: true, onboarding: false, fileName: "" }); render(); window.scrollTo(0, 0); return; }
-    if (e.target.id === "backLink") { e.preventDefault(); var D2 = window.AKESO || {}; window.AKESO = Object.assign({}, D2, { ledger: [], demo: false, onboarding: true, fileName: "" }); render(); window.scrollTo(0, 0); return; }
+    if (e.target.id === "backLink") { e.preventDefault(); var D2 = window.AKESO || {}; window.AKESO = Object.assign({}, D2, { ledger: [], demo: false, onboarding: true, screen: "connect", fileName: "" }); render(); window.scrollTo(0, 0); return; }
+    var go = e.target.closest("[data-screen]"); if (go) { e.preventDefault(); window.AKESO = Object.assign({}, window.AKESO || {}, { onboarding: true, screen: go.dataset.screen }); render(); window.scrollTo(0, 0); return; }
     var t = e.target.closest("[data-tool]");
     if (t) {
       var P = "Run npx akeso-check here, follow its next steps, and explain the report to me in plain English.";
@@ -433,7 +465,9 @@ const JS = String.raw`
       $("cmd").textContent = T[t.dataset.tool].paste; $("cmdCopy").dataset.copy = T[t.dataset.tool].paste; $("how").hidden = !T[t.dataset.tool].steps;
     }
   });
+  if (window.AKESO && window.AKESO.onboarding && /^#(connect|paste)$/.test(location.hash)) window.AKESO.screen = location.hash.slice(1);
   render();
+  if (window.AKESO && window.AKESO.hosted && window.fetch) fetch("/api/connections", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && typeof j === "object") { window.AKESO.connections = j; if (window.AKESO.onboarding) render(); } }).catch(function () {});
 })();
 `;
 
@@ -443,22 +477,44 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
     : { ledger, appName, root, onboarding: false, demo: false, hosted, scenarioNames: SCENARIO_NAMES }).replaceAll("</", "<\\/");
 
   const acts = hosted
-    ? `<span class="acts"><span class="status" id="status"></span><a href="#" class="link" id="backLink" hidden>Start over</a><a href="#" class="link" id="demoLink">See a demo</a><label class="link" title="Read in this tab. Never uploaded.">Load your ledger<input type="file" id="ledgerFile" class="sr" accept=".jsonl,application/json,text/plain"></label></span>`
+    ? `<span class="acts"><span class="status" id="status"></span><a href="#" class="link" id="backLink" hidden>Start over</a><a href="#" class="link" id="demoLink">See an example</a><label class="link" id="loadLink" title="Read in this tab. Never uploaded.">Open your results file<input type="file" id="ledgerFile" class="sr" accept=".jsonl,application/json,text/plain"></label></span>`
     : `<span class="acts"></span>`;
 
+  const CARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/></svg>';
+  const BRANCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 3-4 3-6 4-2 .6-4 1-6 1"/></svg>';
+  const DB = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>';
   const start = hosted ? `
-    <section id="start" hidden>
+    <section id="lock" hidden>
+      <div class="ring ok" style="--arc:471"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="arc" cx="80" cy="80" r="70"/></svg><div class="center">${"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg>"}</div></div>
+      <h1>Do the people who pay you get what they paid for?</h1>
+      <p class="lead">Akeso checks, fixes it, and keeps it that way.</p>
+      <a href="#" class="btn" data-screen="connect">Find out</a>
+      <a href="#" class="link tiny" id="demoLink2" onclick="document.getElementById('demoLink').click();return false;">See an example first</a>
+    </section>
+    <section id="connect" hidden>
+      <p class="eyebrow">Step 1 of 2</p>
+      <h1>Connect what Akeso needs.</h1>
+      <p class="lead">You say yes on each company's own page. Akeso only reads. You can disconnect any of them at any time.</p>
+      <div class="conn">
+        <div class="card" data-conn="stripe"><div class="glyph">${CARD}</div><div class="t">Stripe</div><div class="d">Where you get paid.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=stripe">Connect Stripe</a></div>
+        <div class="card" data-conn="github"><div class="glyph">${BRANCH}</div><div class="t">Your code</div><div class="d">Where your app lives, on GitHub.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=github">Connect GitHub</a></div>
+        <div class="card" data-conn="supabase"><div class="glyph">${DB}</div><div class="t">Your customers</div><div class="d">Where their accounts are stored, on Supabase.</div><div class="fill"></div><div class="cs"><i></i>Not connected</div><a class="btn sec" href="/api/connect?provider=supabase">Connect Supabase</a></div>
+      </div>
+      <p class="alt">Prefer to keep everything on your own computer? <a href="#" class="link" data-screen="paste">Run it yourself with one command.</a></p>
+    </section>
+    <section id="paste" hidden>
+      <p class="eyebrow"><a href="#" class="link" data-screen="connect">Back</a></p>
       <div class="hero">
         <div>
-          <h1>Does your app give paid access to exactly the people paying for it?</h1>
-          <p class="lead">One command. Runs on your machine. Nothing leaves it.</p>
+          <h1>One command. Runs on your computer.</h1>
+          <p class="lead">Nothing leaves it.</p>
         </div>
         <div class="ring none" style="--arc:0"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="arc" cx="80" cy="80" r="70"/></svg><div class="center">?<small>not yet run</small></div></div>
       </div>
       <div class="steps3">
         <div class="card"><div class="num">1</div><div class="t">Paste one command</div><div class="tabs" id="tabs" role="tablist"><button role="tab" aria-selected="true" data-tool="terminal">Terminal</button><button role="tab" aria-selected="false" data-tool="claude">Claude Code</button><button role="tab" aria-selected="false" data-tool="cursor">Cursor</button><button role="tab" aria-selected="false" data-tool="codex">Codex</button><button role="tab" aria-selected="false" data-tool="lovable">Lovable / Bolt / v0</button></div><ol class="how" id="how" hidden><li>Put your project on GitHub (the GitHub button in your builder).</li><li>On github.com: Code, Codespaces, Create codespace.</li><li>In the terminal at the bottom, paste this and press Enter.</li></ol><div class="fill"></div><div class="cmd"><code id="cmd">npx akeso-check</code><button class="link" id="cmdCopy" data-copy="npx akeso-check">Copy</button></div><div class="d">Free and <a class="link" href="https://github.com/jacekimmy/akeso-check">open source</a>.</div></div>
-        <div class="card"><div class="num">2</div><div class="t">Load the ledger it writes</div><div class="d"><span class="code">.akeso/ledger.jsonl</span> in your project. Read in this tab, never uploaded.</div><div class="fill"></div><label class="link">Load your ledger<input type="file" class="sr" accept=".jsonl,application/json,text/plain"></label></div>
-        <div class="card"><div class="num">3</div><div class="t">This page becomes your app's</div><div class="d">Grade, fix, accounts, approvals, receipts.</div><div class="fill"></div><a href="#" class="link" id="demoLink2" onclick="document.getElementById('demoLink').click();return false;">See it with a demo ledger</a></div>
+        <div class="card"><div class="num">2</div><div class="t">Open the results file it writes</div><div class="d"><span class="code">.akeso/ledger.jsonl</span> in your project. Read in this tab, never uploaded.</div><div class="fill"></div><label class="link">Open your results file<input type="file" class="sr" accept=".jsonl,application/json,text/plain"></label></div>
+        <div class="card"><div class="num">3</div><div class="t">This page becomes your app's</div><div class="d">Grade, fix, customers, what needs your OK, totals.</div><div class="fill"></div><a href="#" class="link" onclick="document.getElementById('demoLink').click();return false;">See an example</a></div>
       </div>
     </section>` : "";
 
@@ -490,12 +546,12 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <section>
         <div class="sides">
           <div><h2>Accounts<span class="r" id="compareN"></span></h2><div class="card" id="compare"></div></div>
-          <div><h2>Waiting for your approval</h2><div class="card" id="inbox"></div></div>
+          <div><h2>Needs your OK</h2><div class="card" id="inbox"></div></div>
         </div>
       </section>
 
       <section>
-        <h2>Receipts</h2>
+        <h2>Totals</h2>
         <div class="figures" id="figures"></div>
         <p class="note">Revenue recovered: not measured.</p>
       </section>
@@ -506,7 +562,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       </section>
 
       <section>
-        <h2>Ledger<span class="r" id="ledgerWhere"></span><span class="seal none" id="seal2" style="margin-left:14px"></span></h2>
+        <h2>History<span class="r" id="ledgerWhere"></span><span class="seal none" id="seal2" style="margin-left:14px"></span></h2>
         <div class="card"><div class="timeline" id="timeline"></div></div>
       </section>
 

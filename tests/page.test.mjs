@@ -77,9 +77,10 @@ test("a stranger on the hosted copy sees step one, and the demo only behind a li
   assert.equal(embedded.onboarding, true);
   assert.deepEqual(embedded.ledger, [], "nothing is folded until they load or ask for the demo");
   assert.equal(embedded.demoLedger.length, 1);
-  assert.ok(html.includes('id="start"') && html.includes('id="demoLink"'));
+  for (const id of ["lock", "connect", "paste", "demoLink"]) assert.ok(html.includes(`id="${id}"`), id);
+  assert.ok(html.includes("/api/connect?provider=stripe"), "the connect screen sends them to Stripe's own page");
   const local = renderDashboard({ ledger: [], appName: "mine" });
-  assert.ok(!local.includes('id="start"'), "the local page never onboards; it has its ledger");
+  assert.ok(!local.includes('id="lock"'), "the local page never onboards; it has its results");
 });
 
 test("the inline script parses, so a bad quote cannot blank the whole page", async () => {
