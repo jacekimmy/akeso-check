@@ -394,7 +394,7 @@ const JS = String.raw`
     var fw = check && (check.framework || (check.detection && check.detection.framework));
     $("bound").innerHTML =
       '<div class="card z"><div class="glyph">' + LOCK + '</div><div class="t">Your computer</div><div class="d">Your code, keys and results stay here.</div><div class="s"><i class="ok"></i>Nothing leaves</div></div>' +
-      '<div class="card z"><div class="glyph">' + EYE + '</div><div class="t">Stripe</div><div class="d">Read-only key. Never written to, never stored.</div><div class="s"><i class="' + (sweep && !sweep.couldNotRun ? "ok" : sweep ? "bad" : "") + '"></i>' + (sweep && !sweep.couldNotRun ? "Connected" : sweep ? "Last read failed" : "Not yet read") + "</div></div>" +
+      '<div class="card z"><div class="glyph">' + EYE + '</div><div class="t">Stripe</div><div class="d">Akeso reads your subscriptions. It never changes anything in Stripe.</div><div class="s"><i class="' + (sweep && !sweep.couldNotRun ? "ok" : sweep ? "bad" : "") + '"></i>' + (sweep && !sweep.couldNotRun ? "Connected" : sweep ? "Last read failed" : "Not yet read") + "</div></div>" +
       '<div class="card z"><div class="glyph">' + KEY + '</div><div class="t">Your app' + (fw ? ' <span style="font-weight:400;color:var(--ink3);font-size:14px">' + esc(cap(String(fw).replace(/-/g, " "))) + "</span>" : "") + '</div><div class="d">Two signed endpoints. Delete one file to revoke.</div><div class="s"><i class="' + (covered ? "ok" : fix ? "wait" : "") + '"></i>' + (covered ? "Rules confirmed" : fix ? "Rules not confirmed" : "Not connected") + "</div></div>";
 
     /* ---- the ledger ---- */
