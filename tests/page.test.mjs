@@ -18,7 +18,7 @@ test("the local copy loads nothing from the network", () => {
   const html = renderDashboard({ ledger: [], appName: "demo", hosted: false });
   /* The only URL allowed in the local copy is the one it tells the founder to
      run against (localhost), which loads nothing. */
-  const external = (html.match(/https?:\/\/[^\s"<)]+/g) || []).filter((u) => !/^https?:\/\/(localhost|127\.0\.0\.1)/.test(u));
+  const external = (html.match(/https?:\/\/[^\s"<)]+/g) || []).filter((u) => !/^https?:\/\/(localhost|127\.0\.0\.1|www\.w3\.org)/.test(u)); /* the SVG namespace in a data: URI is not a request */
   assert.deepEqual(external, [], "no external URL in the local file");
   assert.ok(!html.includes("fonts.googleapis"));
 });

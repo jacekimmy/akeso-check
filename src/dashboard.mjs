@@ -63,8 +63,18 @@ const CSS = `
   .card { background:var(--card); border:1px solid var(--line); border-radius:8px; }
   .wrap { max-width:1080px; margin:0 auto; padding:0 32px; }
 
-  /* ---------- lock screen ---------- */
-  #lock { height:100vh; height:100dvh; display:flex; flex-direction:column; position:relative; overflow:hidden; }
+  /* ---------- lock screen: paper ---------- */
+  #lock { height:100vh; height:100dvh; display:flex; flex-direction:column; position:relative; overflow:hidden; background:#f3ecdd; color:#1c1a16; }
+  #lock::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.55; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  #lock::after { content:""; position:absolute; inset:0; pointer-events:none; background:radial-gradient(120% 80% at 50% 0%, rgba(255,250,236,.55), transparent 60%); }
+  #lock canvas.field, #lock .stage { display:none; }
+  #lock .paper { position:relative; z-index:1; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; }
+  #lock .lines { position:relative; width:min(880px, 100%); display:grid; }
+  #lock .lines h1 { grid-area:1 / 1; margin:0; font-family:Newsreader, "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight:400; font-size:clamp(40px, 5.2vw, 72px); line-height:1.06; letter-spacing:-.012em; text-wrap:balance; opacity:0; transition:opacity 1.6s ease; color:#1c1a16; }
+  #lock .lines h1.on { opacity:1; }
+  #lock .paper .btn.big { margin-top:44px; background:#1c1a16; color:#f3ecdd; font-family:Geist, system-ui, sans-serif; letter-spacing:0; text-transform:none; font-size:16px; padding:0 30px; }
+  #lock .paper .btn.big .sat { box-shadow:0 0 0 3px #f3ecdd; }
+  @media (prefers-color-scheme: dark) { #lock { background:#1a1815; color:#ece4d2; } #lock .lines h1 { color:#ece4d2; } #lock::after { background:radial-gradient(120% 80% at 50% 0%, rgba(255,240,210,.06), transparent 60%); } #lock .paper .btn.big { background:#ece4d2; color:#1a1815; } #lock .paper .btn.big .sat { box-shadow:0 0 0 3px #1a1815; } }
   #lock canvas.field { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
   #lock .top, #lock .body { position:relative; }
   #lock .top { display:flex; align-items:center; justify-content:space-between; padding:22px 24px; font-size:13px; color:var(--ink2); }
@@ -771,7 +781,8 @@ const JS = String.raw`
     requestAnimationFrame(draw);
   })();
 
-  /* the lock screen's headline: a departures board, fixed cells, letters flap and settle left to right */
+  /* the intro's two questions alternate slowly */
+  (function () { var hs = document.querySelectorAll("#lock .lines h1"); if (hs.length < 2) return; var i = 0; setInterval(function () { if (document.hidden) return; hs[i].classList.remove("on"); i = (i + 1) % hs.length; hs[i].classList.add("on"); }, 5200); })();
   (function () {
     var el = $("board"); if (!el) return;
     var COLS = 26, ROWS = [["DID YOUR CUSTOMERS GET", "WHAT THEY PAID FOR?"], ["DO YOUR CANCELED CUSTOMERS", "STILL HAVE ACCESS?"]], POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ?";
@@ -800,7 +811,7 @@ const JS = String.raw`
       later(function () { if (my === gen) settle(rows); }, 26 * COLS + 30 + 9 * 92 + 120);
     }
     var btn = $("findOut"), lbl = btn && btn.querySelector(".lbl");
-    if (lbl) {
+    if (lbl && lbl.dataset.label) {
       var A = lbl.dataset.label, B = lbl.dataset.hover, W = Math.max(A.length, B.length), bgen = 0, bt = [];
       var padc = function (t) { var left = Math.floor((W - t.length) / 2); return (Array(left + 1).join(" ") + t + Array(W + 1).join(" ")).slice(0, W); };
       lbl.innerHTML = padc(A).split("").map(function (c) { return '<span class="c"><span>' + (c === " " ? "&nbsp;" : c) + "</span></span>"; }).join("");
@@ -812,13 +823,15 @@ const JS = String.raw`
         bt.push(setTimeout(function () { if (my === bgen) bcells.forEach(function (cell, k) { set(cell, t.charAt(k)); }); }, W * 22 + 6 * 80 + 100));
       };
       btn.addEventListener("mouseenter", function () { bflip(B); }); btn.addEventListener("mouseleave", function () { bflip(A); });
-      var sat = btn.querySelector(".sat");
-      if (sat && !still) (function () {
+    }
+    (function () {
+      var sat = btn && btn.querySelector(".sat"), still2 = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (sat && !still2) (function () {
         var pos = 0, speed = 100 / 7, target = speed, last = performance.now();
         btn.addEventListener("mouseenter", function () { target = 100 / 1.6; }); btn.addEventListener("mouseleave", function () { target = 100 / 7; });
         (function frame(now) { var dt = Math.min(0.05, (now - last) / 1000); last = now; speed += (target - speed) * Math.min(1, dt * 6); pos = (pos + speed * dt) % 100; sat.style.offsetDistance = pos.toFixed(3) + "%"; requestAnimationFrame(frame); })(last);
       })();
-    }
+    })();
     var cycle = null;
     function start() { if (cycle) return; cycle = setInterval(function () { i = (i + 1) % ROWS.length; flipTo(ROWS[i]); }, 3600); }
     function stop() { if (cycle) { clearInterval(cycle); cycle = null; } gen++; timers.forEach(clearTimeout); timers = []; settle(ROWS[i]); }
@@ -842,7 +855,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
   const data = JSON.stringify(hosted && demo
     ? { ledger: [], demoLedger: ledger, demoName: appName, appName: "Your app", onboarding: true, demo: false, hosted: true, scenarioNames: SCENARIO_NAMES }
     : { ledger, appName, root, onboarding: false, demo: false, hosted, scenarioNames: SCENARIO_NAMES }).replaceAll("</", "<\\/");
-  const fonts = hosted ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">` : "";
+  const fonts = hosted ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">` : "";
   const CARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/></svg>';
   const BRANCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 3-4 3-6 4-2 .6-4 1-6 1"/></svg>';
   const DB = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>';
@@ -851,10 +864,10 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
     <section id="lock" hidden>
       <canvas class="field" id="field" aria-hidden="true"></canvas>
       <a href="#" class="link" id="demoLink" hidden>See an example</a>
-      <div class="body">
-        <h1 class="board" id="board" aria-label="Did your customers get what they paid for? Do your canceled customers still have access?"></h1>
+      <div class="paper">
+        <div class="lines" aria-live="off"><h1 class="on">Did your customers get what they paid for?</h1><h1>Do your canceled customers still have access?</h1></div>
         <div class="stage" id="stage"><div class="frame" id="frame"><div class="screen"><div class="inner" id="frameInner"></div></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
-        <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl" data-label="FIND OUT" data-hover="GO AHEAD"></span><i class="sat" aria-hidden="true"></i></a>
+        <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl">Find out</span><i class="sat" aria-hidden="true"></i></a>
       </div>
     </section>
     <section id="connect" hidden><div class="wrap">
