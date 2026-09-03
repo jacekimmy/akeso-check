@@ -84,11 +84,14 @@ const CSS = `
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite:exclude; }
   .frame .glow.on { opacity:1; }
   .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
-  .frame .screen { position:absolute; inset:0; background:#08090a; border-radius:10px; border:1px solid rgba(255,255,255,.16); box-shadow:0 36px 70px -34px rgba(0,0,0,.85); overflow:hidden; }
+  .frame .screen { position:absolute; inset:0; background:#0f0e0c; background-image:radial-gradient(rgba(117,131,255,.16) 1px, transparent 1.3px); background-size:28px 28px; background-position:14px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.14); box-shadow:0 36px 70px -34px rgba(0,0,0,.7); overflow:hidden; }
+  .frame .chrome, .frame .mrail { background:rgba(15,14,12,.7); }
   .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
   .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
   .frame .chrome { height:36px; display:flex; align-items:center; gap:14px; padding:0 22px; border-bottom:1px solid rgba(255,255,255,.14); font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8a9099; position:relative; z-index:2; }
-  .frame .chrome b { color:#f2f2ee; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .frame .chrome b { color:#f2f2ee; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:inline-flex; align-items:center; gap:9px; }
+  .frame .chrome b i { width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block; }
+  .frame .chrome .crumb { color:#8a9099; } .frame .chrome .crumb::before { content:"›"; margin:0 8px; color:#5d636c; }
   .frame .chrome .seal { margin-left:auto; background:none; border:0; padding:0; color:#8a9099; font:inherit; letter-spacing:inherit; text-transform:inherit; }
   .frame .chrome .seal::before { background:var(--ok); }
   .frame .fbody { position:relative; z-index:2; display:grid; grid-template-columns:1fr 220px; border-bottom:1px solid rgba(255,255,255,.14); }
@@ -136,6 +139,15 @@ const CSS = `
   .frame .mrail span.on { color:#f2f2ee; }
   .frame .mrail span i { width:6px; height:6px; border-radius:50%; background:var(--accent); display:inline-block; }
   .frame .mcontent { padding:18px 22px 0; display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .frame .mcontent > * { animation:rise .45s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i, 0) * 60ms); }
+  @keyframes rise { from { opacity:0; transform:translateY(8px); } }
+  .frame .mrow { animation:wipe .5s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i, 0) * 45ms + 120ms); }
+  @keyframes wipe { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
+  .frame .mrow i { animation:pop .35s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i, 0) * 45ms + 60ms); }
+  @keyframes pop { from { transform:scale(0); } }
+  .frame .mtop .verdict { font-size:28px; }
+  .frame .mtop { grid-template-columns:1fr; }
+  @media (prefers-reduced-motion: reduce) { .frame .mcontent > *, .frame .mrow, .frame .mrow i { animation:none; } }
   .frame .mtop { display:grid; grid-template-columns:1fr 130px; gap:16px; align-items:center; }
   .frame .mtop .verdict { font-size:26px; }
   .frame .mtop .act { margin-top:12px; } .frame .mtop .btn { height:32px; padding:0 14px; font-size:13px; }
@@ -542,7 +554,7 @@ const JS = String.raw`
       var moreRow = df.agreeing > 0 ? '<div class="mrow ok dimrow"><i></i><span class="mono">+' + df.agreeing + ' more</span><span class="mono dim">Active</span><span class="tie">=</span><span class="mono dim">Has access</span><span class="word">Agree</span><span></span></div>' : "";
       var unpaid0 = df.lastGood ? (Number(df.lastGood.comparison.monthlyExposure) || 0) : 0;
       var VIEWS = {
-        status: function () { return '<div class="mtop"><div><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn" data-mini="ok">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in 58 min</p></div><div class="gauge">' + ringHTML("ringLock", Object.assign({}, st0, { sub: "" }), false) + "</div></div>" +
+        status: function () { return '<div class="mtop"><div><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn" data-mini="ok">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in <span class="mono" id="countdown">58:00</span></p></div></div>' +
           '<div class="mhead"><span>Customers · ' + df.matched + ' compared</span><span class="link" data-mini="customers">All</span></div><div class="mrows">' + attention.slice(0, 3).map(mrow).join("") + moreRow + "</div>" +
           '<div class="mtotals"><span><b class="ok">' + df.restored.length + '</b> restored</span><span><b>' + df.removed.length + '</b> removed</span><span><b class="wait">' + esc(money(unpaid0)) + '</b> unpaid / mo</span></div>'; },
         customers: function () { return '<div class="mhead" style="border-top:0;padding-top:4px"><span>Customers · ' + df.matched + ' compared</span></div><div class="mrows">' + attention.slice(0, 6).map(mrow).join("") + moreRow + "</div>"; },
@@ -554,11 +566,15 @@ const JS = String.raw`
       var NAV = [["status", "Status"], ["customers", "Customers"], ["ok", "Needs your OK"], ["totals", "Totals"], ["access", "Access"], ["history", "History"]];
       window.__mini = function (view) {
         if (!VIEWS[view]) view = "status";
-        frame.innerHTML = '<div class="chrome"><b>' + esc(D.demoName || "your app").replace(/ \(demo\)$/i, "") + '</b><span class="seal">Verified · just now</span></div>' +
+        var crumb = NAV.filter(function (n) { return n[0] === view; })[0][1];
+        frame.innerHTML = '<div class="chrome"><b><i></i>' + esc((D.demoName || "Your app").replace(/ \(demo\)$/i, "")) + '<span class="crumb">' + esc(crumb) + '</span></b><span class="seal">Verified · just now</span></div>' +
           '<div class="tool"><nav class="mrail">' + NAV.map(function (n) { return '<span data-mini="' + n[0] + '"' + (n[0] === view ? ' class="on"' : "") + "><i></i>" + n[1] + "</span>"; }).join("") + "</nav>" +
           '<div class="mcontent">' + VIEWS[view]() + "</div></div>";
+        Array.prototype.forEach.call(frame.querySelectorAll(".mcontent > *"), function (el, i) { el.style.setProperty("--i", i); });
+        Array.prototype.forEach.call(frame.querySelectorAll(".mrow"), function (el, i) { el.style.setProperty("--i", i); });
       };
       window.__mini("status");
+      (function () { var t0 = Date.now(); setInterval(function () { var c = $("countdown"); if (!c) return; var left = Math.max(0, 58 * 60 - Math.floor((Date.now() - t0) / 1000)); c.textContent = String(Math.floor(left / 60)).padStart(2, "0") + ":" + String(left % 60).padStart(2, "0"); }, 1000); })();
       frame.dataset.done = "1"; requestAnimationFrame(function () { setTimeout(function () { var fr = $("frame"); if (fr) fr.classList.add("in"); }, 60); });
     }
 
