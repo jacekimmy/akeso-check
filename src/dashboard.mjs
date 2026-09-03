@@ -120,7 +120,19 @@ const CSS = `
   .frame .inner .legend { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.02em; }
   .frame .tool { display:grid; grid-template-columns:150px 1fr; height:404px; }
   .frame .mrail { border-right:1px solid rgba(255,255,255,.14); padding:16px 0; display:flex; flex-direction:column; gap:2px; font-size:12px; color:#8a9099; }
-  .frame .mrail span { padding:7px 18px; display:flex; align-items:center; gap:8px; }
+  .frame .mrail span { padding:7px 18px; display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .frame .mrail span:hover { color:#f2f2ee; }
+  .frame .mrail span i { opacity:0; } .frame .mrail span.on i { opacity:1; }
+  .frame .mhead .link { text-transform:none; letter-spacing:.02em; cursor:pointer; }
+  .frame .mcard { display:flex; align-items:center; gap:16px; border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:16px 18px; }
+  .frame .mcard > div:first-child { flex:1; }
+  .frame .macts { display:flex; gap:8px; } .frame .macts .btn { height:32px; padding:0 14px; font-size:12px; }
+  .frame .macts .btn.sec { background:transparent; color:#f2f2ee; border:1px solid rgba(255,255,255,.2); } .frame .macts .btn.danger { background:transparent; color:var(--bad); border:1px solid rgba(255,255,255,.2); }
+  .frame .mfigs { display:grid; grid-template-columns:1fr 1fr 1fr; border:1px solid rgba(255,255,255,.14); border-radius:8px; }
+  .frame .mfigs > div { padding:18px; } .frame .mfigs > div + div { border-left:1px solid rgba(255,255,255,.14); }
+  .frame .mfigs b { display:block; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:34px; font-weight:600; line-height:1; color:#f2f2ee; } .frame .mfigs b.ok { color:var(--ok); } .frame .mfigs b.wait { color:var(--wait); }
+  .frame .mfigs span { display:block; margin-top:8px; font-size:12px; color:#8a9099; }
+  .frame .dim { color:#8a9099; }
   .frame .mrail span.on { color:#f2f2ee; }
   .frame .mrail span i { width:6px; height:6px; border-radius:50%; background:var(--accent); display:inline-block; }
   .frame .mcontent { padding:18px 22px 0; display:flex; flex-direction:column; gap:12px; min-width:0; }
@@ -315,7 +327,7 @@ const CSS = `
     #lock .body { padding:0 20px 100px; justify-content:flex-start; padding-top:24px; }
     .stage { perspective:none; width:100%; } .stage::before { display:none; } .frame { height:auto; aspect-ratio:auto; width:100%; transform:none !important; box-shadow:0 24px 60px -30px rgba(0,0,0,.5); } .frame .inner .loop, .frame .panel { transform:none; } .frame .tool { grid-template-columns:1fr; height:auto; } .frame .mrail, .frame .mhead, .frame .mrows, .frame .mtotals, .frame .mtop .gauge { display:none; } .frame .mtop { grid-template-columns:1fr; padding-bottom:16px; } .frame .mtop .verdict { font-size:22px; } .frame .screen { position:relative; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:0; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
     .arow { display:grid; grid-template-columns:36px 1fr auto; row-gap:6px; } .arow .st { grid-column:2 / -1; } .arow .dis { grid-column:2 / -1; text-align:left; }
-    #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .frame .glow { display:none; }
+    #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .frame .glow { display:none; } .frame .mhead, .frame .mrows, .frame .mtotals { display:none; }
     h1.big { font-size:32px; } .verdict { font-size:30px; }
     .status { grid-template-columns:1fr; gap:24px; } .ring { width:140px; height:140px; margin:0 auto; } .ring .center { font-size:40px; }
     .loop { grid-template-columns:1fr; } .loop::before { display:none; } .loop .cell + .cell { border-left:0; border-top:1px solid var(--line); }
@@ -525,15 +537,28 @@ const JS = String.raw`
       var tiles0 = '<div class="tiles">' + df.scenarios.map(function (r) { return '<span class="tile ' + (r.outcome === "pass" ? "ok" : r.outcome === "fail" ? "bad" : "") + '"></span>'; }).join("") + "</div>";
       var dl0 = []; df.stillWrong.forEach(function (a) { dl0.push(a.verdict === "locked_out" ? "bad" : "wait"); }); df.fixedNow.forEach(function () { dl0.push("ok"); }); for (var q = 0; q < Math.min(df.agreeing, 120); q++) dl0.push("ok"); df.noVerdict.forEach(function () { dl0.push("none"); }); df.notInStripe.forEach(function () { dl0.push("none"); });
       var dots0 = '<div class="dots">' + dl0.map(function (d) { return '<i class="' + d + '"></i>'; }).join("") + '</div><div class="legend"><span><i></i>' + (df.agreeing + df.fixedNow.length) + " agree</span>" + (df.stillWrong.length ? '<span><i class="wait"></i>' + df.stillWrong.length + " disagree</span>" : "") + "</div>";
-      var rows0 = df.stillWrong.concat(df.fixedNow, df.noVerdict, df.notInStripe).slice(0, 4).map(function (a) { var t = toneFor(df, a) || "none"; var word = meaning(df, a); return '<div class="mrow ' + t + '"><i></i><span class="mono">' + esc(a.account) + '</span><span class="mono dim">' + esc(a.stripe == null ? "None" : stripeWord(a)) + '</span><span class="tie">' + (t === "ok" ? "=" : t === "none" ? "?" : "&ne;") + '</span><span class="mono dim">' + esc(appWord(df, a)) + '</span><span class="word">' + esc(word) + '</span><span class="mono dim r">' + (money(a.priceMonthly) ? esc(money(a.priceMonthly)) + "/mo" : "") + "</span></div>"; }).join("");
-      if (df.agreeing > 0) rows0 += '<div class="mrow ok dimrow"><i></i><span class="mono">+' + df.agreeing + ' more</span><span class="mono dim">Active</span><span class="tie">=</span><span class="mono dim">Has access</span><span class="word">Agree</span><span></span></div>';
+      function mrow(a) { var t = toneFor(df, a) || "none"; return '<div class="mrow ' + t + '"><i></i><span class="mono">' + esc(a.account) + '</span><span class="mono dim">' + esc(a.stripe == null ? "None" : stripeWord(a)) + '</span><span class="tie">' + (t === "ok" ? "=" : t === "none" ? "?" : "&ne;") + '</span><span class="mono dim">' + esc(appWord(df, a)) + '</span><span class="word">' + esc(meaning(df, a)) + '</span><span class="mono dim r">' + (money(a.priceMonthly) ? esc(money(a.priceMonthly)) + "/mo" : "") + "</span></div>"; }
+      var attention = df.stillWrong.concat(df.fixedNow, df.noVerdict, df.notInStripe);
+      var moreRow = df.agreeing > 0 ? '<div class="mrow ok dimrow"><i></i><span class="mono">+' + df.agreeing + ' more</span><span class="mono dim">Active</span><span class="tie">=</span><span class="mono dim">Has access</span><span class="word">Agree</span><span></span></div>' : "";
       var unpaid0 = df.lastGood ? (Number(df.lastGood.comparison.monthlyExposure) || 0) : 0;
-      frame.innerHTML = '<div class="chrome"><b>' + esc(D.demoName || "your app") + '</b><span class="seal">Verified · just now</span></div>' +
-        '<div class="tool"><nav class="mrail"><span class="on"><i></i>Status</span><span>Customers</span><span>Needs your OK</span><span>Totals</span><span>Access</span><span>History</span></nav>' +
-        '<div class="mcontent"><div class="mtop"><div><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in 58 min</p></div><div class="gauge">' + ringHTML("ringLock", st0, false) + "</div></div>" +
-        '<div class="mhead"><span>Customers · ' + df.matched + ' compared</span><span class="legend"><span><i></i>paying, has access</span><span><i class="wait"></i>needs you</span><span><i class="bad"></i>locked out</span><span><i class="none"></i>no verdict</span></span></div>' +
-        '<div class="mrows">' + rows0 + "</div>" +
-        '<div class="mtotals"><span><b class="ok">' + df.restored.length + '</b> restored</span><span><b>' + df.removed.length + '</b> removed</span><span><b class="wait">' + esc(money(unpaid0)) + '</b> unpaid / mo</span></div></div></div>';
+      var VIEWS = {
+        status: function () { return '<div class="mtop"><div><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn" data-mini="ok">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in 58 min</p></div><div class="gauge">' + ringHTML("ringLock", Object.assign({}, st0, { sub: "" }), false) + "</div></div>" +
+          '<div class="mhead"><span>Customers · ' + df.matched + ' compared</span><span class="link" data-mini="customers">All</span></div><div class="mrows">' + attention.slice(0, 3).map(mrow).join("") + moreRow + "</div>" +
+          '<div class="mtotals"><span><b class="ok">' + df.restored.length + '</b> restored</span><span><b>' + df.removed.length + '</b> removed</span><span><b class="wait">' + esc(money(unpaid0)) + '</b> unpaid / mo</span></div>'; },
+        customers: function () { return '<div class="mhead" style="border-top:0;padding-top:4px"><span>Customers · ' + df.matched + ' compared</span></div><div class="mrows">' + attention.slice(0, 6).map(mrow).join("") + moreRow + "</div>"; },
+        ok: function () { return '<h1 class="verdict" style="font-size:22px;margin-bottom:14px">Needs your OK</h1>' + df.waiting.map(function (r) { return '<div class="mcard"><div><div class="mono" style="font-size:18px;font-weight:600">' + esc(r.account) + '</div><div class="dim" style="font-size:12px;margin-top:4px">Canceled in Stripe, still has access · ' + esc(money(r.priceMonthly)) + '/mo</div></div><div class="macts"><span class="btn sec">Keep access</span><span class="btn danger">Remove access</span></div></div>'; }).join("") + '<p class="dim" style="font-size:12px;margin-top:14px">Akeso never removes access on its own.</p>'; },
+        totals: function () { return '<h1 class="verdict" style="font-size:22px;margin-bottom:14px">Totals</h1><div class="mfigs"><div><b class="ok">' + df.restored.length + '</b><span>Access restored</span></div><div><b>' + df.removed.length + '</b><span>Access removed</span></div><div><b class="wait">' + esc(money(unpaid0)) + '</b><span>Unpaid access, per month</span></div></div><p class="dim" style="font-size:12px;margin-top:14px">Revenue recovered: not measured.</p>'; },
+        access: function () { return '<h1 class="verdict" style="font-size:22px;margin-bottom:14px">Access</h1><div class="mrows">' + [["Stripe", "Reads subscriptions. Never changes anything in Stripe.", "Connected"], ["Your code", "On GitHub. Fixes arrive as a pull request you approve.", "Connected"], ["Your customers", "Which accounts have paid access, read from Supabase.", "Connected"]].map(function (x) { return '<div class="mrow ok" style="grid-template-columns:8px 120px 1fr 90px 80px"><i></i><span>' + x[0] + '</span><span class="dim">' + x[1] + '</span><span class="word">' + x[2] + '</span><span class="dim r" style="font-size:11px">Disconnect</span></div>'; }).join("") + "</div>"; },
+        history: function () { return '<h1 class="verdict" style="font-size:22px;margin-bottom:14px">History</h1><div class="mrows">' + (D.demoLedger || []).slice().reverse().slice(0, 6).map(function (e) { var word = { check: "Checked", fix: "Fixed", sweep: "Compared customers", restore: "Access restored", approval: "Needs your OK", certify: "Rules confirmed" }[e.kind] || cap(e.kind); var t = e.kind === "check" ? (e.grade === "A" ? "ok" : "bad") : e.kind === "fix" ? "wait" : e.kind === "sweep" ? "wait" : e.kind === "restore" ? "ok" : e.kind === "approval" ? "wait" : "ok"; var sum = e.kind === "check" ? "Grade " + e.grade : e.kind === "fix" ? plural((e.files || []).length, "file", "files") : e.kind === "sweep" ? (e.comparison && e.comparison.counts ? e.comparison.counts.matched + " compared" : "") : e.account || ""; return '<div class="mrow ' + t + '" style="grid-template-columns:8px 160px 1fr 110px"><i></i><span>' + esc(word) + '</span><span class="dim">' + esc(sum) + '</span><span class="dim r mono">' + esc(when(e.at)) + "</span></div>"; }).join("") + "</div>"; }
+      };
+      var NAV = [["status", "Status"], ["customers", "Customers"], ["ok", "Needs your OK"], ["totals", "Totals"], ["access", "Access"], ["history", "History"]];
+      window.__mini = function (view) {
+        if (!VIEWS[view]) view = "status";
+        frame.innerHTML = '<div class="chrome"><b>' + esc(D.demoName || "your app").replace(/ \(demo\)$/i, "") + '</b><span class="seal">Verified · just now</span></div>' +
+          '<div class="tool"><nav class="mrail">' + NAV.map(function (n) { return '<span data-mini="' + n[0] + '"' + (n[0] === view ? ' class="on"' : "") + "><i></i>" + n[1] + "</span>"; }).join("") + "</nav>" +
+          '<div class="mcontent">' + VIEWS[view]() + "</div></div>";
+      };
+      window.__mini("status");
       frame.dataset.done = "1"; requestAnimationFrame(function () { setTimeout(function () { var fr = $("frame"); if (fr) fr.classList.add("in"); }, 60); });
     }
 
@@ -598,6 +623,7 @@ const JS = String.raw`
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-copy]");
     if (b) { var done = function (t) { b.textContent = t; setTimeout(function () { b.textContent = "Copy"; }, 1600); }; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(b.dataset.copy).then(function () { done("Copied"); }, function () { done("Select and copy"); }); else done("Select and copy"); return; }
+    var mi = e.target.closest("[data-mini]"); if (mi && window.__mini) { e.preventDefault(); window.__mini(mi.dataset.mini); return; }
     var dr = e.target.closest("[data-drawer]"); if (dr) { drawerOpen = drawerOpen === dr.dataset.drawer ? null : dr.dataset.drawer; render(); return; }
     var fl = e.target.closest("[data-filter]"); if (fl) { filter = fl.dataset.filter; render(); return; }
     var go = e.target.closest("[data-screen]"); if (go) { e.preventDefault(); window.AKESO = Object.assign({}, window.AKESO || {}, { onboarding: true, screen: go.dataset.screen }); render(); window.scrollTo(0, 0); return; }
@@ -754,7 +780,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
       <div class="body">
         <h1 class="board" id="board" aria-label="Did your customers get what they paid for? Do your canceled customers still have access?"></h1>
-        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="screen"><div class="inner" id="frameInner"></div></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
+        <div class="stage" id="stage"><div class="frame" id="frame"><div class="screen"><div class="inner" id="frameInner"></div></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
         <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl" data-label="FIND OUT" data-hover="GO AHEAD"></span><i class="sat" aria-hidden="true"></i></a>
       </div>
     </section>
