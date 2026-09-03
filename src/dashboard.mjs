@@ -79,11 +79,12 @@ const CSS = `
   .board .cell.go span { animation:flap 90ms linear; }
   @keyframes flap { 0% { transform:rotateX(0); } 49% { transform:rotateX(-90deg); } 51% { transform:rotateX(90deg); } 100% { transform:rotateX(0); } }
   .stage { margin-top:28px; perspective:1400px; position:relative; }
-  .frame .glow { position:absolute; inset:7px; border-radius:5px; pointer-events:none; z-index:3; padding:1.5px; opacity:0; transition:opacity .2s;
+  .frame .glow { position:absolute; inset:-9px; border-radius:16px; pointer-events:none; z-index:3; padding:1.5px; opacity:0; transition:opacity .2s;
     background:radial-gradient(150px circle at var(--mx, -999px) var(--my, -999px), #ffffff 0%, #dfe4ff 6%, var(--accent) 16%, color-mix(in srgb, var(--accent) 55%, transparent) 34%, transparent 52%);
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite:exclude; }
   .frame .glow.on { opacity:1; }
-  .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; background:#08090a; border-radius:10px; border:1px solid rgba(255,255,255,.16); box-shadow:0 36px 70px -34px rgba(0,0,0,.85); overflow:hidden; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
+  .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
+  .frame .screen { position:absolute; inset:0; background:#08090a; border-radius:10px; border:1px solid rgba(255,255,255,.16); box-shadow:0 36px 70px -34px rgba(0,0,0,.85); overflow:hidden; }
   .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
   .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
   .frame .chrome { height:36px; display:flex; align-items:center; gap:14px; padding:0 22px; border-bottom:1px solid rgba(255,255,255,.14); font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8a9099; position:relative; z-index:2; }
@@ -117,7 +118,31 @@ const CSS = `
   .frame .inner .chip.replaced { border-color:rgba(224,150,26,.7); color:#f0b13c; } .frame .inner .chip.created { border-color:rgba(60,207,142,.6); color:#3ccf8e; }
   .frame .inner .dots i { width:9px; height:9px; border-radius:2px; }
   .frame .inner .legend { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.02em; }
-  .frame .inner .loop { grid-template-columns:1fr 1.3fr 1fr; }
+  .frame .tool { display:grid; grid-template-columns:150px 1fr; height:404px; }
+  .frame .mrail { border-right:1px solid rgba(255,255,255,.14); padding:16px 0; display:flex; flex-direction:column; gap:2px; font-size:12px; color:#8a9099; }
+  .frame .mrail span { padding:7px 18px; display:flex; align-items:center; gap:8px; }
+  .frame .mrail span.on { color:#f2f2ee; }
+  .frame .mrail span i { width:6px; height:6px; border-radius:50%; background:var(--accent); display:inline-block; }
+  .frame .mcontent { padding:18px 22px 0; display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .frame .mtop { display:grid; grid-template-columns:1fr 130px; gap:16px; align-items:center; }
+  .frame .mtop .verdict { font-size:26px; }
+  .frame .mtop .act { margin-top:12px; } .frame .mtop .btn { height:32px; padding:0 14px; font-size:13px; }
+  .frame .mtop .meta { margin-top:10px; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.04em; color:#8a9099; display:flex; align-items:center; gap:8px; }
+  .frame .mtop .meta i { width:6px; height:6px; border-radius:50%; background:var(--ok); display:inline-block; animation:pulse 2.4s ease-in-out infinite; }
+  .frame .mtop .gauge .ring { width:120px; height:120px; } .frame .mtop .gauge .ring .center { font-size:34px; } .frame .mtop .gauge .ring::before { inset:-9px; -webkit-mask:radial-gradient(circle, transparent 62px, #000 63px, #000 69px, transparent 70px); mask:radial-gradient(circle, transparent 62px, #000 63px, #000 69px, transparent 70px); }
+  .frame .mhead { display:flex; align-items:center; justify-content:space-between; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#8a9099; border-top:1px solid rgba(255,255,255,.14); padding-top:12px; }
+  .frame .mhead .legend { display:flex; gap:12px; text-transform:none; letter-spacing:.02em; margin:0; }
+  .frame .mhead .legend i { width:7px; height:7px; border-radius:2px; }
+  .frame .mrows { display:flex; flex-direction:column; }
+  .frame .mrow { display:grid; grid-template-columns:8px 92px 84px 14px 92px 1fr 70px; gap:10px; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.07); color:#f2f2ee; }
+  .frame .mrow i { width:8px; height:8px; border-radius:2px; background:var(--none); display:inline-block; }
+  .frame .mrow.ok i { background:var(--ok); } .frame .mrow.wait i { background:var(--wait); } .frame .mrow.bad i { background:var(--bad); }
+  .frame .mrow .dim { color:#8a9099; } .frame .mrow .r { text-align:right; }
+  .frame .mrow .tie { text-align:center; font-weight:600; color:#8a9099; } .frame .mrow.wait .tie, .frame .mrow.bad .tie { color:var(--wait); } .frame .mrow.bad .tie { color:var(--bad); } .frame .mrow.ok .tie { color:var(--ok); }
+  .frame .mrow .word { font-weight:500; } .frame .mrow.ok .word { color:var(--ok); } .frame .mrow.wait .word { color:var(--wait); } .frame .mrow.bad .word { color:var(--bad); } .frame .mrow.none .word { color:#8a9099; }
+  .frame .mrow.dimrow { color:#8a9099; } .frame .mrow.dimrow .word { color:#8a9099; }
+  .frame .mtotals { display:flex; gap:26px; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.04em; color:#8a9099; padding:8px 0 0; }
+  .frame .mtotals b { font-size:15px; color:#f2f2ee; margin-right:6px; } .frame .mtotals b.ok { color:var(--ok); } .frame .mtotals b.wait { color:var(--wait); }
   .frame .inner .big { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:40px; font-weight:600; line-height:1; color:var(--ok); display:flex; align-items:baseline; gap:12px; }
   .frame .inner .big small { font-family:Geist, system-ui, sans-serif; font-size:12px; font-weight:400; color:#8a9099; max-width:12ch; line-height:1.3; }
   .frame .inner { position:absolute; left:0; top:0; width:960px; height:440px; transform-origin:0 0; transform:scale(var(--s, 1)); padding:0; color:#f2f2ee; text-align:left; --card:#131518; --line:#24272c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --bg:#0b0c0e; --tint:#1a1d22; --okSoft:#123b2c; --waitSoft:#4a3413; --none:#3a3f47; }
@@ -288,7 +313,7 @@ const CSS = `
   @media (max-width:720px) {
     .wrap { padding:0 20px; }
     #lock .body { padding:0 20px 100px; justify-content:flex-start; padding-top:24px; }
-    .stage { perspective:none; width:100%; } .stage::before { display:none; } .frame { height:auto; aspect-ratio:auto; width:100%; transform:none !important; box-shadow:0 24px 60px -30px rgba(0,0,0,.5); } .frame .inner .loop, .frame .panel { transform:none; } .frame .fbody { grid-template-columns:1fr; border-bottom:0; } .frame .panel.gauge, .frame .inner .loop { display:none; } .frame .panel .verdict { font-size:22px; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:0; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
+    .stage { perspective:none; width:100%; } .stage::before { display:none; } .frame { height:auto; aspect-ratio:auto; width:100%; transform:none !important; box-shadow:0 24px 60px -30px rgba(0,0,0,.5); } .frame .inner .loop, .frame .panel { transform:none; } .frame .tool { grid-template-columns:1fr; height:auto; } .frame .mrail, .frame .mhead, .frame .mrows, .frame .mtotals, .frame .mtop .gauge { display:none; } .frame .mtop { grid-template-columns:1fr; padding-bottom:16px; } .frame .mtop .verdict { font-size:22px; } .frame .screen { position:relative; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:0; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
     .arow { display:grid; grid-template-columns:36px 1fr auto; row-gap:6px; } .arow .st { grid-column:2 / -1; } .arow .dis { grid-column:2 / -1; text-align:left; }
     #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .frame .glow { display:none; }
     h1.big { font-size:32px; } .verdict { font-size:30px; }
@@ -500,11 +525,15 @@ const JS = String.raw`
       var tiles0 = '<div class="tiles">' + df.scenarios.map(function (r) { return '<span class="tile ' + (r.outcome === "pass" ? "ok" : r.outcome === "fail" ? "bad" : "") + '"></span>'; }).join("") + "</div>";
       var dl0 = []; df.stillWrong.forEach(function (a) { dl0.push(a.verdict === "locked_out" ? "bad" : "wait"); }); df.fixedNow.forEach(function () { dl0.push("ok"); }); for (var q = 0; q < Math.min(df.agreeing, 120); q++) dl0.push("ok"); df.noVerdict.forEach(function () { dl0.push("none"); }); df.notInStripe.forEach(function () { dl0.push("none"); });
       var dots0 = '<div class="dots">' + dl0.map(function (d) { return '<i class="' + d + '"></i>'; }).join("") + '</div><div class="legend"><span><i></i>' + (df.agreeing + df.fixedNow.length) + " agree</span>" + (df.stillWrong.length ? '<span><i class="wait"></i>' + df.stillWrong.length + " disagree</span>" : "") + "</div>";
+      var rows0 = df.stillWrong.concat(df.fixedNow, df.noVerdict, df.notInStripe).slice(0, 4).map(function (a) { var t = toneFor(df, a) || "none"; var word = meaning(df, a); return '<div class="mrow ' + t + '"><i></i><span class="mono">' + esc(a.account) + '</span><span class="mono dim">' + esc(a.stripe == null ? "None" : stripeWord(a)) + '</span><span class="tie">' + (t === "ok" ? "=" : t === "none" ? "?" : "&ne;") + '</span><span class="mono dim">' + esc(appWord(df, a)) + '</span><span class="word">' + esc(word) + '</span><span class="mono dim r">' + (money(a.priceMonthly) ? esc(money(a.priceMonthly)) + "/mo" : "") + "</span></div>"; }).join("");
+      if (df.agreeing > 0) rows0 += '<div class="mrow ok dimrow"><i></i><span class="mono">+' + df.agreeing + ' more</span><span class="mono dim">Active</span><span class="tie">=</span><span class="mono dim">Has access</span><span class="word">Agree</span><span></span></div>';
+      var unpaid0 = df.lastGood ? (Number(df.lastGood.comparison.monthlyExposure) || 0) : 0;
       frame.innerHTML = '<div class="chrome"><b>' + esc(D.demoName || "your app") + '</b><span class="seal">Verified · just now</span></div>' +
-        '<div class="fbody"><div class="panel"><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in 58 min</p></div><div class="panel gauge">' + ringHTML("ringLock", st0, false) + "</div></div>" +
-        '<div class="loop"><div class="cell"><div class="head"><span class="node ok">' + CHECK + '</span><div><div class="name">Check</div><div class="state">Grade ' + esc(df.grade) + "</div></div></div>" + tiles0 + "</div>" +
-        '<div class="cell"><div class="head"><span class="node ' + (df.stillWrong.length ? "wait" : "ok") + '">' + (df.stillWrong.length ? DASH : CHECK) + '</span><div><div class="name">Customers</div><div class="state">' + df.matched + " compared</div></div></div>" + dots0 + "</div>" +
-        '<div class="cell"><div class="head"><span class="node ok">' + CHECK + '</span><div><div class="name">Restored</div><div class="state">confirmed</div></div></div><div class="big">' + df.restored.length + '<small>paying customers let back in</small></div></div></div>';
+        '<div class="tool"><nav class="mrail"><span class="on"><i></i>Status</span><span>Customers</span><span>Needs your OK</span><span>Totals</span><span>Access</span><span>History</span></nav>' +
+        '<div class="mcontent"><div class="mtop"><div><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in 58 min</p></div><div class="gauge">' + ringHTML("ringLock", st0, false) + "</div></div>" +
+        '<div class="mhead"><span>Customers · ' + df.matched + ' compared</span><span class="legend"><span><i></i>paying, has access</span><span><i class="wait"></i>needs you</span><span><i class="bad"></i>locked out</span><span><i class="none"></i>no verdict</span></span></div>' +
+        '<div class="mrows">' + rows0 + "</div>" +
+        '<div class="mtotals"><span><b class="ok">' + df.restored.length + '</b> restored</span><span><b>' + df.removed.length + '</b> removed</span><span><b class="wait">' + esc(money(unpaid0)) + '</b> unpaid / mo</span></div></div></div>';
       frame.dataset.done = "1"; requestAnimationFrame(function () { setTimeout(function () { var fr = $("frame"); if (fr) fr.classList.add("in"); }, 60); });
     }
 
@@ -608,7 +637,7 @@ const JS = String.raw`
       var r = fr.getBoundingClientRect(), W = fr.clientWidth, H = fr.clientHeight;
       /* the cursor in the frame's own coordinates, by proportion of its screen box, so the bloom stays under the pointer while the frame tilts */
       var lx = (ev.clientX - r.left) / r.width * W, ly = (ev.clientY - r.top) / r.height * H;
-      edge.style.setProperty("--mx", (lx - 7).toFixed(1) + "px"); edge.style.setProperty("--my", (ly - 7).toFixed(1) + "px"); edge.classList.add("on");
+      edge.style.setProperty("--mx", (lx + 9).toFixed(1) + "px"); edge.style.setProperty("--my", (ly + 9).toFixed(1) + "px"); edge.classList.add("on");
     }
     lock.addEventListener("mousemove", function (e) { pending = e; if (pending.raf) return; pending.raf = requestAnimationFrame(function () { var ev = pending; pending = null; fr.classList.remove("settle"); var r = fr.getBoundingClientRect(); var px = (ev.clientX - (r.left + r.width / 2)) / r.width, py = (ev.clientY - (r.top + r.height / 2)) / r.height; fr.style.setProperty("--ry", (px * 8).toFixed(2) + "deg"); fr.style.setProperty("--rx", (6 - py * 7).toFixed(2) + "deg"); light(ev); }); });
     lock.addEventListener("mouseleave", function () { fr.classList.add("settle"); fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); if (edge) edge.classList.remove("on"); }); })();
@@ -725,7 +754,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
       <div class="body">
         <h1 class="board" id="board" aria-label="Did your customers get what they paid for? Do your canceled customers still have access?"></h1>
-        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
+        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="screen"><div class="inner" id="frameInner"></div></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
         <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl" data-label="FIND OUT" data-hover="GO AHEAD"></span><i class="sat" aria-hidden="true"></i></a>
       </div>
     </section>
@@ -763,7 +792,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="sections">
         <section id="status"><div id="sStatus"></div></section>
         <section id="theloop"><div id="sLoop"></div></section>
-        <section id="customers"><h2>Customers<span class="r" id="compareN"></span></h2><div class="card" id="compare"></div></section>
+        <section id="customers"><h2>Customers<span class="r" id="compareN"></span></h2><div class="legend" style="margin:-4px 0 10px"><span><i></i>paying, has access</span><span><i class="wait"></i>needs you</span><span><i class="bad"></i>locked out</span><span><i class="none"></i>no verdict</span></div><div class="card" id="compare"></div></section>
         <section id="ok"><h2>Needs your OK</h2><div id="inbox"></div><div id="okSection" hidden></div></section>
         <section id="totals"><h2>Totals</h2><div id="figures"></div></section>
         <section id="access"><h2>Access</h2><div id="bound"></div></section>
