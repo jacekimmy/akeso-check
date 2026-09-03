@@ -85,7 +85,9 @@ const CSS = `
   .frame .glow.on { opacity:1; }
   .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
   .frame .screen { position:absolute; inset:0; background:#0f0e0c; background-image:radial-gradient(rgba(63,226,213,.14) 1px, transparent 1.3px); background-size:28px 28px; background-position:14px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.14); box-shadow:0 36px 70px -34px rgba(0,0,0,.7); overflow:hidden; }
-  .frame .chrome, .frame .mrail { background:rgba(15,14,12,.7); }
+  .frame .mrail { background:#050505; }
+  .frame .chrome { background:#0e0d0b; }
+  .frame .mcontent { background:#100f0d; }
   .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
   .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
   .frame .chrome { height:36px; display:flex; align-items:center; gap:14px; padding:0 22px; border-bottom:1px solid rgba(255,255,255,.14); font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8a9099; position:relative; z-index:2; }
@@ -138,7 +140,10 @@ const CSS = `
   .frame .dim { color:#8a9099; }
   .frame .mrail span.on { color:#f2f2ee; }
   .frame .mrail span i { width:6px; height:6px; border-radius:50%; background:var(--glass); display:inline-block; }
-  .frame .mcontent { padding:18px 22px 0; display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .frame .mcontent { padding:18px 22px 0; display:flex; flex-direction:column; gap:12px; min-width:0; margin:0; }
+  .frame .mtotals { margin:0 -22px; padding:14px 22px 0; background:#171614; border-top:1px solid rgba(255,255,255,.1); flex:1; }
+  .frame .event { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.04em; color:var(--g3); min-height:16px; opacity:0; transition:opacity .35s; margin:-6px 0 0; }
+  .frame .event.on { opacity:1; }
   .frame .mcontent > * { animation:rise .45s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i, 0) * 60ms); }
   @keyframes rise { from { opacity:0; transform:translateY(8px); } }
   .frame .mrow { animation:wipe .5s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i, 0) * 45ms + 120ms); }
@@ -184,6 +189,7 @@ const CSS = `
   .frame .mrow.dimrow { color:#8a9099; } .frame .mrow.dimrow .word { color:#8a9099; }
   .frame .mtotals { display:flex; gap:26px; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.04em; color:#8a9099; padding:8px 0 0; }
   .frame .mtotals b { font-size:15px; color:#f2f2ee; margin-right:6px; } .frame .mtotals b.ok { color:var(--ok); } .frame .mtotals b.wait { color:var(--wait); }
+  .frame .mtotals { padding:14px 22px 0; align-items:baseline; }
   .frame .inner .big { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:40px; font-weight:600; line-height:1; color:var(--ok); display:flex; align-items:baseline; gap:12px; }
   .frame .inner .big small { font-family:Geist, system-ui, sans-serif; font-size:12px; font-weight:400; color:#8a9099; max-width:12ch; line-height:1.3; }
   .frame .inner { position:absolute; left:0; top:0; width:960px; height:440px; transform-origin:0 0; transform:scale(var(--s, 1)); padding:0; color:#f2f2ee; text-align:left; --card:#131518; --line:#24272c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --bg:#0b0c0e; --tint:#1a1d22; --okSoft:#123b2c; --waitSoft:#4a3413; --none:#3a3f47; }
@@ -580,7 +586,7 @@ const JS = String.raw`
             dotsL += '<circle class="pt l ' + (kind === "wait" ? "off" : "") + '" cx="14" cy="' + y.toFixed(1) + '" r="3.2"/>';
             dotsR += '<circle class="pt r" cx="' + (W - 14) + '" cy="' + y.toFixed(1) + '" r="3.2"/>';
           }
-          return '<div class="bridge"><div class="rails"><span>Stripe</span><span>' + df.matched + ' customers</span><span>Your app</span></div><svg viewBox="0 0 ' + W + ' ' + H + '" id="bridge" aria-hidden="true">' + lines + dotsL + dotsR + '<circle class="pulse" id="pulse" r="4" cx="-10" cy="-10"/></svg></div>' +
+          return '<div class="bridge"><div class="rails"><span>Stripe</span><span>' + df.matched + ' customers</span><span>Your app</span></div><svg viewBox="0 0 ' + W + ' ' + H + '" id="bridge" aria-hidden="true">' + lines + dotsL + dotsR + '<circle class="pulse" id="pulse" r="4" cx="-10" cy="-10"/></svg><p class="event" id="event"></p></div>' +
             '<div class="mtop"><div><h1 class="verdict" style="font-size:20px">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn" data-mini="ok">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in <span class="mono" id="countdown">58:00</span></p></div></div>' +
           '<div class="mtotals"><span><b class="ok" id="tRestored">' + df.restored.length + '</b> restored</span><span><b>' + df.removed.length + '</b> removed</span><span><b class="wait">' + esc(money(unpaid0)) + '</b> unpaid / mo</span><span class="link" data-mini="customers" style="margin-left:auto">All customers</span></div>'; },
         customers: function () { return '<div class="mhead" style="border-top:0;padding-top:4px"><span>Customers · ' + df.matched + ' compared</span></div><div class="mrows">' + attention.slice(0, 6).map(mrow).join("") + moreRow + "</div>"; },
@@ -610,17 +616,19 @@ const JS = String.raw`
           var ln = ok[Math.floor(Math.random() * ok.length)], i = +ln.dataset.i, dotR = svg.querySelectorAll(".pt.r")[i], pulse = $("pulse");
           busy = true;
           ln.classList.remove("ok"); ln.classList.add("bad"); dotR.classList.add("off");
+          var ev0 = $("event"); if (ev0) { ev0.textContent = "acct_" + (2000 + i * 137 % 7000) + " is paying but locked out"; ev0.classList.add("on"); }
           setTimeout(function () {
             if (!ln.isConnected) { busy = false; return; }
             var len = ln.getTotalLength(), t0 = performance.now(), dur = 700;
             (function move(now) { var k = Math.min(1, (now - t0) / dur); var p = ln.getPointAtLength(len * k); pulse.setAttribute("cx", p.x); pulse.setAttribute("cy", p.y); pulse.style.opacity = "1"; if (k < 1) requestAnimationFrame(move); else {
               pulse.style.opacity = "0"; ln.classList.remove("bad"); ln.classList.add("ok", "restored", "just"); dotR.classList.remove("off");
+              var ev = $("event"); if (ev) { ev.textContent = "acct_" + (2000 + i * 137 % 7000) + " was locked out · restored, confirmed"; ev.classList.add("on"); setTimeout(function () { ev.classList.remove("on"); }, 4200); }
               var tr = $("tRestored"); if (tr) { window.__restoredExtra++; tr.textContent = String(df.restored.length + window.__restoredExtra); tr.classList.remove("bump"); void tr.offsetWidth; tr.classList.add("bump"); }
               setTimeout(function () { ln.classList.remove("just"); busy = false; }, 900);
             } })(t0);
           }, 1500);
         }
-        setInterval(tick, 9000); setTimeout(tick, 3500);
+        setInterval(tick, 9000); setTimeout(tick, 2000);
       })();
       (function () { var t0 = Date.now(); setInterval(function () { var c = $("countdown"); if (!c) return; var left = Math.max(0, 58 * 60 - Math.floor((Date.now() - t0) / 1000)); c.textContent = String(Math.floor(left / 60)).padStart(2, "0") + ":" + String(left % 60).padStart(2, "0"); }, 1000); })();
       frame.dataset.done = "1"; requestAnimationFrame(function () { setTimeout(function () { var fr = $("frame"); if (fr) fr.classList.add("in"); }, 60); });
