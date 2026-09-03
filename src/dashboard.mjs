@@ -79,12 +79,10 @@ const CSS = `
   .board .cell.go span { animation:flap 90ms linear; }
   @keyframes flap { 0% { transform:rotateX(0); } 49% { transform:rotateX(-90deg); } 51% { transform:rotateX(90deg); } 100% { transform:rotateX(0); } }
   .stage { margin-top:28px; perspective:1400px; position:relative; }
-  .frame .glow { position:absolute; inset:-1px; border-radius:inherit; pointer-events:none; z-index:3; padding:2px; opacity:0; transition:opacity .25s;
-    background:radial-gradient(260px circle at var(--mx, -999px) var(--my, -999px), var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, transparent) 28%, transparent 62%), radial-gradient(520px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%);
+  .frame .glow { position:absolute; inset:7px; border-radius:5px; pointer-events:none; z-index:3; padding:1.5px; opacity:0; transition:opacity .2s;
+    background:radial-gradient(150px circle at var(--mx, -999px) var(--my, -999px), #ffffff 0%, #dfe4ff 6%, var(--accent) 16%, color-mix(in srgb, var(--accent) 55%, transparent) 34%, transparent 52%);
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite:exclude; }
   .frame .glow.on { opacity:1; }
-  .frame .glow.spill { padding:14px; opacity:0; filter:blur(9px); }
-  .frame .glow.spill.on { opacity:.45; }
   .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; background:#08090a; border-radius:10px; border:1px solid rgba(255,255,255,.16); box-shadow:0 36px 70px -34px rgba(0,0,0,.85); overflow:hidden; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
   .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
   .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
@@ -610,10 +608,10 @@ const JS = String.raw`
       var r = fr.getBoundingClientRect(), W = fr.clientWidth, H = fr.clientHeight;
       /* the cursor in the frame's own coordinates, by proportion of its screen box, so the bloom stays under the pointer while the frame tilts */
       var lx = (ev.clientX - r.left) / r.width * W, ly = (ev.clientY - r.top) / r.height * H;
-      [edge, $("edge2")].forEach(function (g) { if (!g) return; g.style.setProperty("--mx", lx.toFixed(1) + "px"); g.style.setProperty("--my", ly.toFixed(1) + "px"); g.classList.add("on"); });
+      edge.style.setProperty("--mx", (lx - 7).toFixed(1) + "px"); edge.style.setProperty("--my", (ly - 7).toFixed(1) + "px"); edge.classList.add("on");
     }
     lock.addEventListener("mousemove", function (e) { pending = e; if (pending.raf) return; pending.raf = requestAnimationFrame(function () { var ev = pending; pending = null; fr.classList.remove("settle"); var r = fr.getBoundingClientRect(); var px = (ev.clientX - (r.left + r.width / 2)) / r.width, py = (ev.clientY - (r.top + r.height / 2)) / r.height; fr.style.setProperty("--ry", (px * 8).toFixed(2) + "deg"); fr.style.setProperty("--rx", (6 - py * 7).toFixed(2) + "deg"); light(ev); }); });
-    lock.addEventListener("mouseleave", function () { fr.classList.add("settle"); fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); [edge, $("edge2")].forEach(function (g) { if (g) g.classList.remove("on"); }); }); })();
+    lock.addEventListener("mouseleave", function () { fr.classList.add("settle"); fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); if (edge) edge.classList.remove("on"); }); })();
 
   /* the field: one dot per customer, a slow wave turning them green */
   (function () {
@@ -727,7 +725,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
       <div class="body">
         <h1 class="board" id="board" aria-label="Did your customers get what they paid for? Do your canceled customers still have access?"></h1>
-        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div><div class="glow spill" id="edge2" aria-hidden="true"></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
+        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
         <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl" data-label="FIND OUT" data-hover="GO AHEAD"></span><i class="sat" aria-hidden="true"></i></a>
       </div>
     </section>
