@@ -146,6 +146,23 @@ const CSS = `
   .frame .mrow i { animation:pop .35s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i, 0) * 45ms + 60ms); }
   @keyframes pop { from { transform:scale(0); } }
   .frame .mtop .verdict { font-size:28px; }
+  .frame .bridge { margin:-4px 0 0; }
+  .frame .bridge .rails { display:flex; justify-content:space-between; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8a9099; margin-bottom:6px; }
+  .frame .bridge svg { width:100%; height:auto; display:block; overflow:visible; }
+  .frame .bridge .ln { fill:none; stroke-width:1.2; stroke:rgba(58,232,179,.42); stroke-dasharray:1000; stroke-dashoffset:1000; animation:draw .9s cubic-bezier(.2,.8,.2,1) forwards; animation-delay:calc(var(--i, 0) * 30ms); transition:stroke .5s; }
+  .frame .bridge .ln.wait { stroke:var(--wait); stroke-width:1.6; stroke-dasharray:6 5; stroke-dashoffset:0; animation:none; }
+  .frame .bridge .ln.bad { stroke:var(--bad); stroke-width:1.6; }
+  .frame .bridge .ln.restored { stroke:rgba(58,232,179,.9); stroke-width:1.5; }
+  .frame .bridge .ln.just { stroke:#dcfff7; filter:drop-shadow(0 0 4px rgba(58,232,179,.9)); }
+  @keyframes draw { to { stroke-dashoffset:0; } }
+  .frame .bridge .pt { fill:var(--ok); transition:fill .4s; }
+  .frame .bridge .pt.off { fill:none; stroke:var(--none); stroke-width:1.2; }
+  .frame .bridge .pt.l.off { fill:none; stroke:var(--wait); }
+  .frame .bridge .pulse { fill:#fff; opacity:0; filter:drop-shadow(0 0 6px #3ae8b3); transition:opacity .2s; }
+  .frame .mtotals b.bump { animation:bump .5s cubic-bezier(.2,.8,.2,1); }
+  @keyframes bump { 30% { transform:translateY(-4px) scale(1.15); } }
+  .frame .mtotals b { display:inline-block; }
+  @media (prefers-reduced-motion: reduce) { .frame .bridge .ln { animation:none; stroke-dashoffset:0; } }
   .frame .mtop { grid-template-columns:1fr; }
   @media (prefers-reduced-motion: reduce) { .frame .mcontent > *, .frame .mrow, .frame .mrow i { animation:none; } }
   .frame .mtop { display:grid; grid-template-columns:1fr 130px; gap:16px; align-items:center; }
@@ -339,7 +356,7 @@ const CSS = `
     #lock .body { padding:0 20px 100px; justify-content:flex-start; padding-top:24px; }
     .stage { perspective:none; width:100%; } .stage::before { display:none; } .frame { height:auto; aspect-ratio:auto; width:100%; transform:none !important; box-shadow:0 24px 60px -30px rgba(0,0,0,.5); } .frame .inner .loop, .frame .panel { transform:none; } .frame .tool { grid-template-columns:1fr; height:auto; } .frame .mrail, .frame .mhead, .frame .mrows, .frame .mtotals, .frame .mtop .gauge { display:none; } .frame .mtop { grid-template-columns:1fr; padding-bottom:16px; } .frame .mtop .verdict { font-size:22px; } .frame .screen { position:relative; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:0; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
     .arow { display:grid; grid-template-columns:36px 1fr auto; row-gap:6px; } .arow .st { grid-column:2 / -1; } .arow .dis { grid-column:2 / -1; text-align:left; }
-    #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .frame .glow { display:none; } .frame .mhead, .frame .mrows, .frame .mtotals { display:none; }
+    #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .frame .glow { display:none; } .frame .mhead, .frame .mrows, .frame .mtotals, .frame .bridge { display:none; }
     h1.big { font-size:32px; } .verdict { font-size:30px; }
     .status { grid-template-columns:1fr; gap:24px; } .ring { width:140px; height:140px; margin:0 auto; } .ring .center { font-size:40px; }
     .loop { grid-template-columns:1fr; } .loop::before { display:none; } .loop .cell + .cell { border-left:0; border-top:1px solid var(--line); }
@@ -554,9 +571,18 @@ const JS = String.raw`
       var moreRow = df.agreeing > 0 ? '<div class="mrow ok dimrow"><i></i><span class="mono">+' + df.agreeing + ' more</span><span class="mono dim">Active</span><span class="tie">=</span><span class="mono dim">Has access</span><span class="word">Agree</span><span></span></div>' : "";
       var unpaid0 = df.lastGood ? (Number(df.lastGood.comparison.monthlyExposure) || 0) : 0;
       var VIEWS = {
-        status: function () { return '<div class="mtop"><div><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn" data-mini="ok">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in <span class="mono" id="countdown">58:00</span></p></div></div>' +
-          '<div class="mhead"><span>Customers · ' + df.matched + ' compared</span><span class="link" data-mini="customers">All</span></div><div class="mrows">' + attention.slice(0, 3).map(mrow).join("") + moreRow + "</div>" +
-          '<div class="mtotals"><span><b class="ok">' + df.restored.length + '</b> restored</span><span><b>' + df.removed.length + '</b> removed</span><span><b class="wait">' + esc(money(unpaid0)) + '</b> unpaid / mo</span></div>'; },
+        status: function () {
+          var N = 18, W = 900, H = 150, lines = "", dotsL = "", dotsR = "";
+          for (var i = 0; i < N; i++) {
+            var y = 10 + i * ((H - 20) / (N - 1)), kind = i === 4 ? "wait" : i === 11 ? "ok restored" : "ok";
+            var d = "M 14 " + y.toFixed(1) + " C 300 " + y.toFixed(1) + ", 600 " + y.toFixed(1) + ", " + (W - 14) + " " + y.toFixed(1);
+            lines += '<path class="ln ' + kind + '" data-i="' + i + '" d="' + d + '" style="--i:' + i + '"/>';
+            dotsL += '<circle class="pt l ' + (kind === "wait" ? "off" : "") + '" cx="14" cy="' + y.toFixed(1) + '" r="3.2"/>';
+            dotsR += '<circle class="pt r" cx="' + (W - 14) + '" cy="' + y.toFixed(1) + '" r="3.2"/>';
+          }
+          return '<div class="bridge"><div class="rails"><span>Stripe</span><span>' + df.matched + ' customers</span><span>Your app</span></div><svg viewBox="0 0 ' + W + ' ' + H + '" id="bridge" aria-hidden="true">' + lines + dotsL + dotsR + '<circle class="pulse" id="pulse" r="4" cx="-10" cy="-10"/></svg></div>' +
+            '<div class="mtop"><div><h1 class="verdict" style="font-size:20px">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn" data-mini="ok">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in <span class="mono" id="countdown">58:00</span></p></div></div>' +
+          '<div class="mtotals"><span><b class="ok" id="tRestored">' + df.restored.length + '</b> restored</span><span><b>' + df.removed.length + '</b> removed</span><span><b class="wait">' + esc(money(unpaid0)) + '</b> unpaid / mo</span><span class="link" data-mini="customers" style="margin-left:auto">All customers</span></div>'; },
         customers: function () { return '<div class="mhead" style="border-top:0;padding-top:4px"><span>Customers · ' + df.matched + ' compared</span></div><div class="mrows">' + attention.slice(0, 6).map(mrow).join("") + moreRow + "</div>"; },
         ok: function () { return '<h1 class="verdict" style="font-size:22px;margin-bottom:14px">Needs your OK</h1>' + df.waiting.map(function (r) { return '<div class="mcard"><div><div class="mono" style="font-size:18px;font-weight:600">' + esc(r.account) + '</div><div class="dim" style="font-size:12px;margin-top:4px">Canceled in Stripe, still has access · ' + esc(money(r.priceMonthly)) + '/mo</div></div><div class="macts"><span class="btn sec">Keep access</span><span class="btn danger">Remove access</span></div></div>'; }).join("") + '<p class="dim" style="font-size:12px;margin-top:14px">Akeso never removes access on its own.</p>'; },
         totals: function () { return '<h1 class="verdict" style="font-size:22px;margin-bottom:14px">Totals</h1><div class="mfigs"><div><b class="ok">' + df.restored.length + '</b><span>Access restored</span></div><div><b>' + df.removed.length + '</b><span>Access removed</span></div><div><b class="wait">' + esc(money(unpaid0)) + '</b><span>Unpaid access, per month</span></div></div><p class="dim" style="font-size:12px;margin-top:14px">Revenue recovered: not measured.</p>'; },
@@ -574,6 +600,28 @@ const JS = String.raw`
         Array.prototype.forEach.call(frame.querySelectorAll(".mrow"), function (el, i) { el.style.setProperty("--i", i); });
       };
       window.__mini("status");
+      window.__restoredExtra = 0;
+      (function () {
+        var busy = false;
+        function tick() {
+          var svg = $("bridge"); if (!svg || busy || document.hidden) return;
+          var ok = Array.prototype.filter.call(svg.querySelectorAll(".ln.ok:not(.restored)"), function () { return true; });
+          if (!ok.length) return;
+          var ln = ok[Math.floor(Math.random() * ok.length)], i = +ln.dataset.i, dotR = svg.querySelectorAll(".pt.r")[i], pulse = $("pulse");
+          busy = true;
+          ln.classList.remove("ok"); ln.classList.add("bad"); dotR.classList.add("off");
+          setTimeout(function () {
+            if (!ln.isConnected) { busy = false; return; }
+            var len = ln.getTotalLength(), t0 = performance.now(), dur = 700;
+            (function move(now) { var k = Math.min(1, (now - t0) / dur); var p = ln.getPointAtLength(len * k); pulse.setAttribute("cx", p.x); pulse.setAttribute("cy", p.y); pulse.style.opacity = "1"; if (k < 1) requestAnimationFrame(move); else {
+              pulse.style.opacity = "0"; ln.classList.remove("bad"); ln.classList.add("ok", "restored", "just"); dotR.classList.remove("off");
+              var tr = $("tRestored"); if (tr) { window.__restoredExtra++; tr.textContent = String(df.restored.length + window.__restoredExtra); tr.classList.remove("bump"); void tr.offsetWidth; tr.classList.add("bump"); }
+              setTimeout(function () { ln.classList.remove("just"); busy = false; }, 900);
+            } })(t0);
+          }, 1500);
+        }
+        setInterval(tick, 9000); setTimeout(tick, 3500);
+      })();
       (function () { var t0 = Date.now(); setInterval(function () { var c = $("countdown"); if (!c) return; var left = Math.max(0, 58 * 60 - Math.floor((Date.now() - t0) / 1000)); c.textContent = String(Math.floor(left / 60)).padStart(2, "0") + ":" + String(left % 60).padStart(2, "0"); }, 1000); })();
       frame.dataset.done = "1"; requestAnimationFrame(function () { setTimeout(function () { var fr = $("frame"); if (fr) fr.classList.add("in"); }, 60); });
     }
