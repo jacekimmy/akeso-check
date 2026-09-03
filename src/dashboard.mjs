@@ -79,10 +79,12 @@ const CSS = `
   .board .cell.go span { animation:flap 90ms linear; }
   @keyframes flap { 0% { transform:rotateX(0); } 49% { transform:rotateX(-90deg); } 51% { transform:rotateX(90deg); } 100% { transform:rotateX(0); } }
   .stage { margin-top:28px; perspective:1400px; position:relative; }
-  .frame svg.edge { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:3; opacity:0; transition:opacity .18s; overflow:visible; }
-  .frame svg.edge rect { fill:none; stroke:var(--accent); stroke-linecap:round; }
-  .frame svg.edge .soft { stroke-width:6; opacity:.22; filter:blur(3px); }
-  .frame svg.edge .core { stroke-width:2; }
+  .frame .glow { position:absolute; inset:-1px; border-radius:inherit; pointer-events:none; z-index:3; padding:2px; opacity:0; transition:opacity .25s;
+    background:radial-gradient(260px circle at var(--mx, -999px) var(--my, -999px), var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, transparent) 28%, transparent 62%), radial-gradient(520px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite:exclude; }
+  .frame .glow.on { opacity:1; }
+  .frame .glow.spill { padding:14px; opacity:0; filter:blur(9px); }
+  .frame .glow.spill.on { opacity:.45; }
   .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; background:#08090a; border-radius:10px; border:1px solid rgba(255,255,255,.16); box-shadow:0 36px 70px -34px rgba(0,0,0,.85); overflow:hidden; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
   .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
   .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
@@ -290,7 +292,7 @@ const CSS = `
     #lock .body { padding:0 20px 100px; justify-content:flex-start; padding-top:24px; }
     .stage { perspective:none; width:100%; } .stage::before { display:none; } .frame { height:auto; aspect-ratio:auto; width:100%; transform:none !important; box-shadow:0 24px 60px -30px rgba(0,0,0,.5); } .frame .inner .loop, .frame .panel { transform:none; } .frame .fbody { grid-template-columns:1fr; border-bottom:0; } .frame .panel.gauge, .frame .inner .loop { display:none; } .frame .panel .verdict { font-size:22px; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:0; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
     .arow { display:grid; grid-template-columns:36px 1fr auto; row-gap:6px; } .arow .st { grid-column:2 / -1; } .arow .dis { grid-column:2 / -1; text-align:left; }
-    #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .stage .edge { display:none; }
+    #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .frame .glow { display:none; }
     h1.big { font-size:32px; } .verdict { font-size:30px; }
     .status { grid-template-columns:1fr; gap:24px; } .ring { width:140px; height:140px; margin:0 auto; } .ring .center { font-size:40px; }
     .loop { grid-template-columns:1fr; } .loop::before { display:none; } .loop .cell + .cell { border-left:0; border-top:1px solid var(--line); }
@@ -603,28 +605,15 @@ const JS = String.raw`
   function fitFrame() { var fr = $("frame"), inner = $("frameInner"); if (!fr || !inner || fr.offsetWidth === 0 || window.innerWidth <= 720) { if (inner) inner.style.removeProperty("--s"); return; } inner.style.setProperty("--s", String(fr.clientWidth / 960)); }
   window.addEventListener("resize", fitFrame); setTimeout(fitFrame, 0); setTimeout(fitFrame, 300);
   (function () { var lock = $("lock"), fr = $("frame"); if (!lock || !fr || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return; var edge = $("edge"), stage = $("stage"), pending = null;
-    var rects = edge ? edge.querySelectorAll("rect") : [];
     function light(ev) {
-      if (!edge || !rects.length) return;
-      var r = fr.getBoundingClientRect(), W = fr.clientWidth, H = fr.clientHeight, R = 9, x = ev.clientX, y = ev.clientY;
-      /* the cursor in the frame's own coordinates, by proportion of its screen box */
-      var lx = (x - r.left) / r.width * W, ly = (y - r.top) / r.height * H;
-      var d = { top: Math.abs(ly), bottom: Math.abs(ly - H), left: Math.abs(lx), right: Math.abs(lx - W) };
-      var side = "top", best = d.top; for (var k in d) if (d[k] < best) { best = d[k]; side = k; }
-      var inside = lx >= 0 && lx <= W && ly >= 0 && ly <= H;
-      var op = Math.max(0, 1 - best / (inside ? 120 : 100));
-      /* position along the rounded rectangle's perimeter, clockwise from the top-left corner's end */
-      var w = W - 2, h = H - 2, arc = Math.PI * R / 2, tl = w - 2 * R, sl = h - 2 * R, pos;
-      if (side === "top") pos = Math.min(tl, Math.max(0, lx - 1 - R));
-      else if (side === "right") pos = tl + arc + Math.min(sl, Math.max(0, ly - 1 - R));
-      else if (side === "bottom") pos = tl + arc + sl + arc + Math.min(tl, Math.max(0, (W - 1 - R) - lx));
-      else pos = tl + arc + sl + arc + tl + arc + Math.min(sl, Math.max(0, (H - 1 - R) - ly));
-      var total = 2 * tl + 2 * sl + 4 * arc;
-      rects.forEach(function (rc, i) { var len = i === 0 ? 260 : 150; rc.setAttribute("width", w); rc.setAttribute("height", h); rc.setAttribute("stroke-dasharray", len + " " + (total + 1000)); rc.setAttribute("stroke-dashoffset", String(-(pos - len / 2))); });
-      edge.style.opacity = op.toFixed(2);
+      if (!edge) return;
+      var r = fr.getBoundingClientRect(), W = fr.clientWidth, H = fr.clientHeight;
+      /* the cursor in the frame's own coordinates, by proportion of its screen box, so the bloom stays under the pointer while the frame tilts */
+      var lx = (ev.clientX - r.left) / r.width * W, ly = (ev.clientY - r.top) / r.height * H;
+      [edge, $("edge2")].forEach(function (g) { if (!g) return; g.style.setProperty("--mx", lx.toFixed(1) + "px"); g.style.setProperty("--my", ly.toFixed(1) + "px"); g.classList.add("on"); });
     }
     lock.addEventListener("mousemove", function (e) { pending = e; if (pending.raf) return; pending.raf = requestAnimationFrame(function () { var ev = pending; pending = null; fr.classList.remove("settle"); var r = fr.getBoundingClientRect(); var px = (ev.clientX - (r.left + r.width / 2)) / r.width, py = (ev.clientY - (r.top + r.height / 2)) / r.height; fr.style.setProperty("--ry", (px * 8).toFixed(2) + "deg"); fr.style.setProperty("--rx", (6 - py * 7).toFixed(2) + "deg"); light(ev); }); });
-    lock.addEventListener("mouseleave", function () { fr.classList.add("settle"); fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); if (edge) edge.style.opacity = "0"; }); })();
+    lock.addEventListener("mouseleave", function () { fr.classList.add("settle"); fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); [edge, $("edge2")].forEach(function (g) { if (g) g.classList.remove("on"); }); }); })();
 
   /* the field: one dot per customer, a slow wave turning them green */
   (function () {
@@ -738,7 +727,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
       <div class="body">
         <h1 class="board" id="board" aria-label="Did your customers get what they paid for? Do your canceled customers still have access?"></h1>
-        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div><svg class="edge" id="edge" aria-hidden="true"><rect class="soft" x="1" y="1" rx="9" ry="9"/><rect class="core" x="1" y="1" rx="9" ry="9"/></svg></div></div>
+        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div><div class="glow spill" id="edge2" aria-hidden="true"></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
         <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl" data-label="FIND OUT" data-hover="GO AHEAD"></span><i class="sat" aria-hidden="true"></i></a>
       </div>
     </section>
