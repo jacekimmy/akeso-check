@@ -79,8 +79,10 @@ const CSS = `
   .board .cell.go span { animation:flap 90ms linear; }
   @keyframes flap { 0% { transform:rotateX(0); } 49% { transform:rotateX(-90deg); } 51% { transform:rotateX(90deg); } 100% { transform:rotateX(0); } }
   .stage { margin-top:28px; perspective:1400px; position:relative; }
-  .stage .edge { position:absolute; width:160px; height:2px; left:0; top:0; border-radius:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent); opacity:0; transform:translate(-50%, -50%); pointer-events:none; z-index:2; transition:opacity .18s; }
-  .stage .edge.v { width:2px; height:160px; background:linear-gradient(180deg, transparent, var(--accent), transparent); }
+  .frame svg.edge { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:3; opacity:0; transition:opacity .18s; overflow:visible; }
+  .frame svg.edge rect { fill:none; stroke:var(--accent); stroke-linecap:round; }
+  .frame svg.edge .soft { stroke-width:6; opacity:.22; filter:blur(3px); }
+  .frame svg.edge .core { stroke-width:2; }
   .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; background:#08090a; border-radius:10px; border:1px solid rgba(255,255,255,.16); box-shadow:0 36px 70px -34px rgba(0,0,0,.85); overflow:hidden; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
   .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
   .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
@@ -115,6 +117,9 @@ const CSS = `
   .frame .inner .chip.replaced { border-color:rgba(224,150,26,.7); color:#f0b13c; } .frame .inner .chip.created { border-color:rgba(60,207,142,.6); color:#3ccf8e; }
   .frame .inner .dots i { width:9px; height:9px; border-radius:2px; }
   .frame .inner .legend { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.02em; }
+  .frame .inner .loop { grid-template-columns:1fr 1.3fr 1fr; }
+  .frame .inner .big { font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:40px; font-weight:600; line-height:1; color:var(--ok); display:flex; align-items:baseline; gap:12px; }
+  .frame .inner .big small { font-family:Geist, system-ui, sans-serif; font-size:12px; font-weight:400; color:#8a9099; max-width:12ch; line-height:1.3; }
   .frame .inner { position:absolute; left:0; top:0; width:960px; height:440px; transform-origin:0 0; transform:scale(var(--s, 1)); padding:0; color:#f2f2ee; text-align:left; --card:#131518; --line:#24272c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --bg:#0b0c0e; --tint:#1a1d22; --okSoft:#123b2c; --waitSoft:#4a3413; --none:#3a3f47; }
   .frame .inner .status { margin:0; }
   .frame .inner .loop { margin-top:36px; }
@@ -124,11 +129,8 @@ const CSS = `
   .btn.orbit .lbl .c { display:inline-block; width:.62em; text-align:center; perspective:200px; }
   .btn.orbit .lbl .c span { display:inline-block; backface-visibility:hidden; }
   .btn.orbit .lbl .c.go span { animation:flap 90ms linear; }
-  .btn.orbit .sat { position:absolute; width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--bg); offset-path:inset(-4px round 999px); offset-distance:0%; animation:orbit 7s linear infinite; }
-  .btn.orbit:hover .sat { animation-duration:1.6s; }
+  .btn.orbit .sat { position:absolute; width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--bg); offset-path:inset(-4px round 999px); offset-distance:0%; }
   .btn.orbit:active { transform:scale(.97); }
-  @keyframes orbit { to { offset-distance:100%; } }
-  @media (prefers-reduced-motion: reduce) { .btn.orbit .sat { animation:none; offset-distance:25%; } }
 
   /* ---------- connect ---------- */
   #connect, #paste { padding:88px 0 96px; }
@@ -495,8 +497,14 @@ const JS = String.raw`
     var frame = $("frameInner");
     if (frame && !frame.dataset.done) {
       var df = fold(D.demoLedger || []), st0 = df.step;
+      var tiles0 = '<div class="tiles">' + df.scenarios.map(function (r) { return '<span class="tile ' + (r.outcome === "pass" ? "ok" : r.outcome === "fail" ? "bad" : "") + '"></span>'; }).join("") + "</div>";
+      var dl0 = []; df.stillWrong.forEach(function (a) { dl0.push(a.verdict === "locked_out" ? "bad" : "wait"); }); df.fixedNow.forEach(function () { dl0.push("ok"); }); for (var q = 0; q < Math.min(df.agreeing, 120); q++) dl0.push("ok"); df.noVerdict.forEach(function () { dl0.push("none"); }); df.notInStripe.forEach(function () { dl0.push("none"); });
+      var dots0 = '<div class="dots">' + dl0.map(function (d) { return '<i class="' + d + '"></i>'; }).join("") + '</div><div class="legend"><span><i></i>' + (df.agreeing + df.fixedNow.length) + " agree</span>" + (df.stillWrong.length ? '<span><i class="wait"></i>' + df.stillWrong.length + " disagree</span>" : "") + "</div>";
       frame.innerHTML = '<div class="chrome"><b>' + esc(D.demoName || "your app") + '</b><span class="seal">Verified · just now</span></div>' +
-        '<div class="fbody"><div class="panel"><p class="eyebrow">Right now</p><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Last checked just now · next in 58 min</p></div><div class="panel gauge">' + ringHTML("ringLock", st0, false) + "</div></div>" + loopHTML(df, false, true);
+        '<div class="fbody"><div class="panel"><h1 class="verdict">' + esc(st0.h) + '</h1>' + (st0.action ? '<div class="act"><span class="btn">' + esc(st0.action.label) + "</span></div>" : "") + '<p class="meta"><i></i>Checked just now · next in 58 min</p></div><div class="panel gauge">' + ringHTML("ringLock", st0, false) + "</div></div>" +
+        '<div class="loop"><div class="cell"><div class="head"><span class="node ok">' + CHECK + '</span><div><div class="name">Check</div><div class="state">Grade ' + esc(df.grade) + "</div></div></div>" + tiles0 + "</div>" +
+        '<div class="cell"><div class="head"><span class="node ' + (df.stillWrong.length ? "wait" : "ok") + '">' + (df.stillWrong.length ? DASH : CHECK) + '</span><div><div class="name">Customers</div><div class="state">' + df.matched + " compared</div></div></div>" + dots0 + "</div>" +
+        '<div class="cell"><div class="head"><span class="node ok">' + CHECK + '</span><div><div class="name">Restored</div><div class="state">confirmed</div></div></div><div class="big">' + df.restored.length + '<small>paying customers let back in</small></div></div></div>';
       frame.dataset.done = "1"; requestAnimationFrame(function () { setTimeout(function () { var fr = $("frame"); if (fr) fr.classList.add("in"); }, 60); });
     }
 
@@ -595,19 +603,25 @@ const JS = String.raw`
   function fitFrame() { var fr = $("frame"), inner = $("frameInner"); if (!fr || !inner || fr.offsetWidth === 0 || window.innerWidth <= 720) { if (inner) inner.style.removeProperty("--s"); return; } inner.style.setProperty("--s", String(fr.clientWidth / 960)); }
   window.addEventListener("resize", fitFrame); setTimeout(fitFrame, 0); setTimeout(fitFrame, 300);
   (function () { var lock = $("lock"), fr = $("frame"); if (!lock || !fr || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return; var edge = $("edge"), stage = $("stage"), pending = null;
+    var rects = edge ? edge.querySelectorAll("rect") : [];
     function light(ev) {
-      if (!edge || !stage) return;
-      var r = fr.getBoundingClientRect(), sr = stage.getBoundingClientRect();
-      var x = ev.clientX, y = ev.clientY;
-      var d = { top: Math.abs(y - r.top), bottom: Math.abs(y - r.bottom), left: Math.abs(x - r.left), right: Math.abs(x - r.right) };
+      if (!edge || !rects.length) return;
+      var r = fr.getBoundingClientRect(), W = fr.clientWidth, H = fr.clientHeight, R = 9, x = ev.clientX, y = ev.clientY;
+      /* the cursor in the frame's own coordinates, by proportion of its screen box */
+      var lx = (x - r.left) / r.width * W, ly = (y - r.top) / r.height * H;
+      var d = { top: Math.abs(ly), bottom: Math.abs(ly - H), left: Math.abs(lx), right: Math.abs(lx - W) };
       var side = "top", best = d.top; for (var k in d) if (d[k] < best) { best = d[k]; side = k; }
-      var inside = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-      var zone = inside ? 110 : 90, op = Math.max(0, 1 - best / zone);
-      var horizontal = side === "top" || side === "bottom";
-      var cx = horizontal ? Math.min(r.right, Math.max(r.left, x)) : (side === "left" ? r.left : r.right);
-      var cy = horizontal ? (side === "top" ? r.top : r.bottom) : Math.min(r.bottom, Math.max(r.top, y));
-      edge.className = "edge" + (horizontal ? "" : " v");
-      edge.style.left = (cx - sr.left) + "px"; edge.style.top = (cy - sr.top) + "px"; edge.style.opacity = op.toFixed(2);
+      var inside = lx >= 0 && lx <= W && ly >= 0 && ly <= H;
+      var op = Math.max(0, 1 - best / (inside ? 120 : 100));
+      /* position along the rounded rectangle's perimeter, clockwise from the top-left corner's end */
+      var w = W - 2, h = H - 2, arc = Math.PI * R / 2, tl = w - 2 * R, sl = h - 2 * R, pos;
+      if (side === "top") pos = Math.min(tl, Math.max(0, lx - 1 - R));
+      else if (side === "right") pos = tl + arc + Math.min(sl, Math.max(0, ly - 1 - R));
+      else if (side === "bottom") pos = tl + arc + sl + arc + Math.min(tl, Math.max(0, (W - 1 - R) - lx));
+      else pos = tl + arc + sl + arc + tl + arc + Math.min(sl, Math.max(0, (H - 1 - R) - ly));
+      var total = 2 * tl + 2 * sl + 4 * arc;
+      rects.forEach(function (rc, i) { var len = i === 0 ? 260 : 150; rc.setAttribute("width", w); rc.setAttribute("height", h); rc.setAttribute("stroke-dasharray", len + " " + (total + 1000)); rc.setAttribute("stroke-dashoffset", String(-(pos - len / 2))); });
+      edge.style.opacity = op.toFixed(2);
     }
     lock.addEventListener("mousemove", function (e) { pending = e; if (pending.raf) return; pending.raf = requestAnimationFrame(function () { var ev = pending; pending = null; fr.classList.remove("settle"); var r = fr.getBoundingClientRect(); var px = (ev.clientX - (r.left + r.width / 2)) / r.width, py = (ev.clientY - (r.top + r.height / 2)) / r.height; fr.style.setProperty("--ry", (px * 8).toFixed(2) + "deg"); fr.style.setProperty("--rx", (6 - py * 7).toFixed(2) + "deg"); light(ev); }); });
     lock.addEventListener("mouseleave", function () { fr.classList.add("settle"); fr.style.removeProperty("--rx"); fr.style.removeProperty("--ry"); if (edge) edge.style.opacity = "0"; }); })();
@@ -683,6 +697,12 @@ const JS = String.raw`
         bt.push(setTimeout(function () { if (my === bgen) bcells.forEach(function (cell, k) { set(cell, t.charAt(k)); }); }, W * 22 + 6 * 80 + 100));
       };
       btn.addEventListener("mouseenter", function () { bflip(B); }); btn.addEventListener("mouseleave", function () { bflip(A); });
+      var sat = btn.querySelector(".sat");
+      if (sat && !still) (function () {
+        var pos = 0, speed = 100 / 7, target = speed, last = performance.now();
+        btn.addEventListener("mouseenter", function () { target = 100 / 1.6; }); btn.addEventListener("mouseleave", function () { target = 100 / 7; });
+        (function frame(now) { var dt = Math.min(0.05, (now - last) / 1000); last = now; speed += (target - speed) * Math.min(1, dt * 6); pos = (pos + speed * dt) % 100; sat.style.offsetDistance = pos.toFixed(3) + "%"; requestAnimationFrame(frame); })(last);
+      })();
     }
     var cycle = null;
     function start() { if (cycle) return; cycle = setInterval(function () { i = (i + 1) % ROWS.length; flipTo(ROWS[i]); }, 3600); }
@@ -718,8 +738,8 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
       <div class="body">
         <h1 class="board" id="board" aria-label="Did your customers get what they paid for? Do your canceled customers still have access?"></h1>
-        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div></div><div class="edge" id="edge" aria-hidden="true"></div></div>
-        <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl" data-label="FIND OUT" data-hover="SHOW ME"></span><i class="sat" aria-hidden="true"></i></a>
+        <div class="stage" id="stage"><div class="frame" id="frame" aria-hidden="true"><div class="inner" id="frameInner"></div><svg class="edge" id="edge" aria-hidden="true"><rect class="soft" x="1" y="1" rx="9" ry="9"/><rect class="core" x="1" y="1" rx="9" ry="9"/></svg></div></div>
+        <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl" data-label="FIND OUT" data-hover="GO AHEAD"></span><i class="sat" aria-hidden="true"></i></a>
       </div>
     </section>
     <section id="connect" hidden><div class="wrap">
