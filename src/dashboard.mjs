@@ -35,12 +35,12 @@ const SCENARIO_NAMES = {
 const CSS = `
   :root {
     --bg:#f6f5f1; --card:#ffffff; --ink:#17191d; --ink2:#5d636c; --ink3:#8a9099; --line:#e6e4dd; --tint:#f1f0eb;
-    --accent:#2b3ae8; --ok:#1e9a6a; --okSoft:#e3f4ec; --bad:#e5484d; --badSoft:#fbdcdd; --wait:#e0961a; --waitSoft:#fbecd0; --none:#c9cdd3; --link:#2b3ae8;
+    --g1:#22c3de; --g2:#1fd1c4; --g3:#3ae8b3; --glass:linear-gradient(100deg, #22c3de, #1fd1c4 50%, #3ae8b3); --accent:#0e9c95; --ok:#1e9a6a; --okSoft:#e3f4ec; --bad:#e5484d; --badSoft:#fbdcdd; --wait:#e0961a; --waitSoft:#fbecd0; --none:#c9cdd3; --link:#0e9c95;
     --frame:#0b0c0e;
   }
   @media (prefers-color-scheme: dark) { :root {
     --bg:#0f1114; --card:#16181c; --ink:#f2f2ee; --ink2:#a4a9b1; --ink3:#6f757e; --line:#262a30; --tint:#1c1f24;
-    --accent:#7583ff; --ok:#3ccf8e; --okSoft:#123b2c; --bad:#ff6b6f; --badSoft:#4a1e21; --wait:#f0b13c; --waitSoft:#4a3413; --none:#3a3f47; --link:#7583ff;
+    --g1:#3fd3ee; --g2:#3fe2d5; --g3:#5cf2c4; --glass:linear-gradient(100deg, #3fd3ee, #3fe2d5 50%, #5cf2c4); --accent:#3fe2d5; --ok:#3ccf8e; --okSoft:#123b2c; --bad:#ff6b6f; --badSoft:#4a1e21; --wait:#f0b13c; --waitSoft:#4a3413; --none:#3a3f47; --link:#3fe2d5;
     --frame:#141619;
   } }
   * { box-sizing:border-box; }
@@ -52,7 +52,7 @@ const CSS = `
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   [hidden] { display:none !important; }
   button { font:inherit; }
-  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:40px; padding:0 18px; border-radius:999px; background:var(--accent); color:#fff; font-size:14px; font-weight:500; border:0; cursor:pointer; white-space:nowrap; transition:transform .18s ease-out, opacity .18s; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:40px; padding:0 18px; border-radius:999px; background:var(--glass); color:#06100f; font-size:14px; font-weight:500; border:0; cursor:pointer; white-space:nowrap; transition:transform .18s ease-out, opacity .18s; }
   .btn:hover { opacity:.92; } .btn:active { transform:scale(.98); }
   .btn.big { height:48px; padding:0 26px; font-size:16px; }
   .btn.sec { background:var(--card); color:var(--ink); border:1px solid var(--line); }
@@ -71,7 +71,7 @@ const CSS = `
   #lock .top .acts a { margin-left:22px; }
   .brand { font-weight:600; font-size:15px; color:var(--ink); display:inline-flex; align-items:center; gap:9px; }
   .brand i { width:10px; height:10px; border-radius:50%; background:var(--accent); display:inline-block; }
-  #lock .body { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 24px 24px; gap:0; }
+  #lock .body { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px 24px; gap:0; }
   .board { margin:0; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-weight:600; text-transform:uppercase; letter-spacing:0; font-size:min(44px, calc((100vw - 48px) / 26 / .62)); line-height:1.18; }
   .board .row { display:block; white-space:pre; }
   .board .cell { display:inline-block; width:.62em; text-align:center; perspective:300px; }
@@ -80,17 +80,17 @@ const CSS = `
   @keyframes flap { 0% { transform:rotateX(0); } 49% { transform:rotateX(-90deg); } 51% { transform:rotateX(90deg); } 100% { transform:rotateX(0); } }
   .stage { margin-top:28px; perspective:1400px; position:relative; }
   .frame .glow { position:absolute; inset:-9px; border-radius:16px; pointer-events:none; z-index:3; padding:1.5px; opacity:0; transition:opacity .2s;
-    background:radial-gradient(150px circle at var(--mx, -999px) var(--my, -999px), #ffffff 0%, #dfe4ff 6%, var(--accent) 16%, color-mix(in srgb, var(--accent) 55%, transparent) 34%, transparent 52%);
+    background:radial-gradient(150px circle at var(--mx, -999px) var(--my, -999px), #ffffff 0%, #dcfff7 5%, var(--g3) 13%, var(--g2) 24%, color-mix(in srgb, var(--g1) 60%, transparent) 38%, transparent 54%);
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite:exclude; }
   .frame .glow.on { opacity:1; }
   .frame { height:min(50vh, 440px); aspect-ratio:96 / 44; max-width:100%; width:auto; position:relative; z-index:1; opacity:0; transform-style:preserve-3d; transform:translateY(22px) rotateX(10deg); transition:opacity .7s ease-out, transform .7s ease-out; }
-  .frame .screen { position:absolute; inset:0; background:#0f0e0c; background-image:radial-gradient(rgba(117,131,255,.16) 1px, transparent 1.3px); background-size:28px 28px; background-position:14px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.14); box-shadow:0 36px 70px -34px rgba(0,0,0,.7); overflow:hidden; }
+  .frame .screen { position:absolute; inset:0; background:#0f0e0c; background-image:radial-gradient(rgba(63,226,213,.14) 1px, transparent 1.3px); background-size:28px 28px; background-position:14px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.14); box-shadow:0 36px 70px -34px rgba(0,0,0,.7); overflow:hidden; }
   .frame .chrome, .frame .mrail { background:rgba(15,14,12,.7); }
   .frame.in { opacity:1; transform:rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition:opacity .7s ease-out, transform 0s; will-change:transform; }
   .frame.in.settle { transition:opacity .7s ease-out, transform .6s cubic-bezier(.2,.8,.2,1); }
   .frame .chrome { height:36px; display:flex; align-items:center; gap:14px; padding:0 22px; border-bottom:1px solid rgba(255,255,255,.14); font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8a9099; position:relative; z-index:2; }
   .frame .chrome b { color:#f2f2ee; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:inline-flex; align-items:center; gap:9px; }
-  .frame .chrome b i { width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block; }
+  .frame .chrome b i { width:8px; height:8px; border-radius:50%; background:var(--glass); display:inline-block; }
   .frame .chrome .crumb { color:#8a9099; } .frame .chrome .crumb::before { content:"›"; margin:0 8px; color:#5d636c; }
   .frame .chrome .seal { margin-left:auto; background:none; border:0; padding:0; color:#8a9099; font:inherit; letter-spacing:inherit; text-transform:inherit; }
   .frame .chrome .seal::before { background:var(--ok); }
@@ -137,7 +137,7 @@ const CSS = `
   .frame .mfigs span { display:block; margin-top:8px; font-size:12px; color:#8a9099; }
   .frame .dim { color:#8a9099; }
   .frame .mrail span.on { color:#f2f2ee; }
-  .frame .mrail span i { width:6px; height:6px; border-radius:50%; background:var(--accent); display:inline-block; }
+  .frame .mrail span i { width:6px; height:6px; border-radius:50%; background:var(--glass); display:inline-block; }
   .frame .mcontent { padding:18px 22px 0; display:flex; flex-direction:column; gap:12px; min-width:0; }
   .frame .mcontent > * { animation:rise .45s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i, 0) * 60ms); }
   @keyframes rise { from { opacity:0; transform:translateY(8px); } }
@@ -173,12 +173,12 @@ const CSS = `
   .frame .inner .status { margin:0; }
   .frame .inner .loop { margin-top:36px; }
   #lock .btn.big { margin-top:44px; }
-  .btn.orbit { position:relative; background:var(--ink); color:var(--bg); font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:14px; letter-spacing:.12em; text-transform:uppercase; padding:0 30px; overflow:visible; }
+  .btn.orbit { position:relative; background:var(--ink); color:var(--bg); background-image:none; font-family:"Geist Mono", ui-monospace, Menlo, monospace; font-size:14px; letter-spacing:.12em; text-transform:uppercase; padding:0 30px; overflow:visible; }
   .btn.orbit .lbl { display:inline-flex; }
   .btn.orbit .lbl .c { display:inline-block; width:.62em; text-align:center; perspective:200px; }
   .btn.orbit .lbl .c span { display:inline-block; backface-visibility:hidden; }
   .btn.orbit .lbl .c.go span { animation:flap 90ms linear; }
-  .btn.orbit .sat { position:absolute; width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--bg); offset-path:inset(-4px round 999px); offset-distance:0%; }
+  .btn.orbit .sat { position:absolute; width:8px; height:8px; border-radius:50%; background:var(--glass); box-shadow:0 0 0 3px var(--bg); offset-path:inset(-4px round 999px); offset-distance:0%; }
   .btn.orbit:active { transform:scale(.97); }
 
   /* ---------- connect ---------- */
@@ -567,7 +567,7 @@ const JS = String.raw`
       window.__mini = function (view) {
         if (!VIEWS[view]) view = "status";
         var crumb = NAV.filter(function (n) { return n[0] === view; })[0][1];
-        frame.innerHTML = '<div class="chrome"><b><i></i>' + esc((D.demoName || "Your app").replace(/ \(demo\)$/i, "")) + '<span class="crumb">' + esc(crumb) + '</span></b><span class="seal">Verified · just now</span></div>' +
+        frame.innerHTML = '<div class="chrome"><b><i></i>' + esc(crumb) + '</b><span class="seal">Verified · just now</span></div>' +
           '<div class="tool"><nav class="mrail">' + NAV.map(function (n) { return '<span data-mini="' + n[0] + '"' + (n[0] === view ? ' class="on"' : "") + "><i></i>" + n[1] + "</span>"; }).join("") + "</nav>" +
           '<div class="mcontent">' + VIEWS[view]() + "</div></div>";
         Array.prototype.forEach.call(frame.querySelectorAll(".mcontent > *"), function (el, i) { el.style.setProperty("--i", i); });
@@ -706,7 +706,8 @@ const JS = String.raw`
         var edge = Math.min(1, Math.max(0, (dist - 0.16) / 0.34));
         var a = Math.min(0.6, (0.06 + 0.5 * g)) * edge;
         var amber = hz > 0.993 && ((t * 0.7 + hz * 60) % 7) < 0.7;
-        ctx.fillStyle = amber ? "rgba(224,150,26," + (0.9 * edge) + ")" : dark ? "rgba(117,131,255," + a + ")" : "rgba(43,58,232," + a + ")";
+        var shade = hz2 < 0.34 ? (dark ? "63,211,238" : "34,195,222") : hz2 < 0.67 ? (dark ? "63,226,213" : "31,209,196") : (dark ? "92,242,196" : "58,232,179");
+        ctx.fillStyle = amber ? "rgba(224,150,26," + (0.9 * edge) + ")" : "rgba(" + shade + "," + a + ")";
         ctx.beginPath(); ctx.arc(x, y, R + g * 1.1, 0, 6.2832); ctx.fill();
       }
       if (!still) requestAnimationFrame(draw);
@@ -793,7 +794,7 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
   const onboarding = hosted ? `
     <section id="lock" hidden>
       <canvas class="field" id="field" aria-hidden="true"></canvas>
-      <div class="top"><span class="brand"><i aria-hidden="true"></i>Akeso</span><span class="acts"><a href="#" class="link" id="demoLink" style="color:var(--ink2)">See an example</a><a href="#" style="color:var(--ink2)">Log in</a></span></div>
+      <a href="#" class="link" id="demoLink" hidden>See an example</a>
       <div class="body">
         <h1 class="board" id="board" aria-label="Did your customers get what they paid for? Do your canceled customers still have access?"></h1>
         <div class="stage" id="stage"><div class="frame" id="frame"><div class="screen"><div class="inner" id="frameInner"></div></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
