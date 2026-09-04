@@ -68,9 +68,11 @@ const CSS = `
   #lock::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.55; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
   #lock::after { content:""; position:absolute; inset:0; pointer-events:none; background:radial-gradient(120% 80% at 50% 0%, rgba(255,250,236,.55), transparent 60%); }
   #lock canvas.field, #lock .stage { display:none; }
-  #lock .paper { position:relative; z-index:1; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; }
-  #lock .lines { position:relative; width:min(880px, 100%); display:grid; }
-  #lock .lines h1 { grid-area:1 / 1; margin:0; font-family:Newsreader, "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight:400; font-size:clamp(40px, 5.2vw, 72px); line-height:1.06; letter-spacing:-.012em; text-wrap:balance; opacity:0; transition:opacity 1.6s ease; color:#1c1a16; }
+  #lock canvas.fern { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:0; }
+  #lock .paper { position:relative; z-index:1; flex:1; display:grid; grid-template-columns:minmax(0, 560px) 1fr; align-items:center; padding:0 0 0 max(64px, 9vw); }
+  #lock .paper .col { display:flex; flex-direction:column; align-items:flex-start; }
+  #lock .lines { position:relative; width:100%; display:grid; text-align:left; }
+  #lock .lines h1 { grid-area:1 / 1; margin:0; font-family:Newsreader, "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight:400; font-size:clamp(40px, 4.6vw, 66px); line-height:1.06; letter-spacing:-.012em; text-wrap:balance; opacity:0; transition:opacity 1.6s ease; color:#1c1a16; }
   #lock .lines h1.on { opacity:1; }
   #lock .paper .btn.big { margin-top:44px; background:#1c1a16; color:#f3ecdd; font-family:Geist, system-ui, sans-serif; letter-spacing:0; text-transform:none; font-size:16px; padding:0 30px; }
   #lock .paper .btn.big .sat { box-shadow:0 0 0 3px #f3ecdd; }
@@ -369,7 +371,7 @@ const CSS = `
   @media (max-width:1100px) { .layout { grid-template-columns:1fr; } .index { display:none; } }
   @media (max-width:720px) {
     .wrap { padding:0 20px; }
-    #lock .body { padding:0 20px 100px; justify-content:flex-start; padding-top:24px; }
+    #lock .paper { grid-template-columns:1fr; padding:0 24px 120px; align-items:end; } #lock .paper .col { align-items:center; } #lock .lines { text-align:center; } #lock canvas.fern { opacity:.55; }
     .stage { perspective:none; width:100%; } .stage::before { display:none; } .frame { height:auto; aspect-ratio:auto; width:100%; transform:none !important; box-shadow:0 24px 60px -30px rgba(0,0,0,.5); } .frame .inner .loop, .frame .panel { transform:none; } .frame .tool { grid-template-columns:1fr; height:auto; } .frame .mrail, .frame .mhead, .frame .mrows, .frame .mtotals, .frame .mtop .gauge { display:none; } .frame .mtop { grid-template-columns:1fr; padding-bottom:16px; } .frame .mtop .verdict { font-size:22px; } .frame .screen { position:relative; } .frame .inner { position:relative; width:auto; height:auto; transform:none; padding:0; } .frame .inner .loop { display:none; } .frame .inner .status { grid-template-columns:1fr; gap:18px; } .frame .inner .ring { width:110px; height:110px; margin:0 auto; } .frame .inner .ring .center { font-size:32px; } .frame .inner .verdict { font-size:26px; } .frame .inner .meta { display:none; }
     .arow { display:grid; grid-template-columns:36px 1fr auto; row-gap:6px; } .arow .st { grid-column:2 / -1; } .arow .dis { grid-column:2 / -1; text-align:left; }
     #lock .btn.big { position:fixed; left:20px; right:20px; bottom:24px; height:52px; margin:0; } .frame .glow { display:none; } .frame .mhead, .frame .mrows, .frame .mtotals, .frame .bridge { display:none; }
@@ -781,6 +783,32 @@ const JS = String.raw`
     requestAnimationFrame(draw);
   })();
 
+  /* the specimen: a fern pressed onto the paper, one ink dot at a time (four affine maps, the rule ferns actually follow) */
+  (function () {
+    var c = $("fern"); if (!c || !c.getContext) return;
+    var ctx = c.getContext("2d"), dark = matchMedia && matchMedia("(prefers-color-scheme: dark)").matches, still = matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var ink = dark ? "236,228,210" : "30,38,34";
+    var x = 0, y = 0, drawn = 0, TOTAL = 70000, PER = still ? TOTAL : 420, box = null;
+    function size() { var d = Math.min(2, devicePixelRatio || 1); var w = c.clientWidth, h = c.clientHeight; if (!w) return false; c.width = w * d; c.height = h * d; ctx.setTransform(d, 0, 0, d, 0, 0); var phone = w < 720; var fh = phone ? h * 0.62 : Math.min(h * 0.86, 760); var fw = fh * 0.58; box = { w: fw, h: fh, left: phone ? (w - fw) / 2 : Math.min(w - fw - 40, w * 0.56 + (w * 0.44 - fw) / 2), top: phone ? h * 0.02 : (h - fh) / 2 + 10 }; return true; }
+    function step() { var r = Math.random(), nx, ny; if (r < 0.01) { nx = 0; ny = 0.16 * y; } else if (r < 0.86) { nx = 0.85 * x + 0.04 * y; ny = -0.04 * x + 0.85 * y + 1.6; } else if (r < 0.93) { nx = 0.2 * x - 0.26 * y; ny = 0.23 * x + 0.22 * y + 1.6; } else { nx = -0.15 * x + 0.28 * y; ny = 0.26 * x + 0.24 * y + 0.44; } x = nx; y = ny; }
+    function grow() {
+      if (!box) return;
+      var n = Math.min(PER, TOTAL - drawn);
+      for (var i = 0; i < n; i++) {
+        step();
+        var px = box.left + (x + 2.72) / 5.44 * box.w, py = box.top + box.h - (y / 10) * box.h;
+        var a = 0.55 + Math.random() * 0.4, rr = 0.75 + Math.random() * 0.6;
+        ctx.fillStyle = "rgba(" + ink + "," + (a * 0.9).toFixed(2) + ")"; ctx.beginPath(); ctx.arc(px + (Math.random() - 0.5) * 0.6, py + (Math.random() - 0.5) * 0.6, rr, 0, 6.2832); ctx.fill();
+        if (i % 9 === 0) { ctx.fillStyle = "rgba(" + ink + ",0.06)"; ctx.beginPath(); ctx.arc(px, py, 2.6, 0, 6.2832); ctx.fill(); }
+      }
+      drawn += n;
+      if (drawn < TOTAL) requestAnimationFrame(grow);
+    }
+    function start() { if (!size()) { setTimeout(start, 200); return; } x = 0; y = 0; drawn = 0; requestAnimationFrame(grow); }
+    window.addEventListener("resize", start);
+    setTimeout(start, 250);
+  })();
+
   /* the intro's two questions alternate slowly */
   (function () { var hs = document.querySelectorAll("#lock .lines h1"); if (hs.length < 2) return; var i = 0; setInterval(function () { if (document.hidden) return; hs[i].classList.remove("on"); i = (i + 1) % hs.length; hs[i].classList.add("on"); }, 5200); })();
   (function () {
@@ -865,10 +893,11 @@ export function renderDashboard({ ledger = [], appName = "this app", root = null
       <canvas class="field" id="field" aria-hidden="true"></canvas>
       <a href="#" class="link" id="demoLink" hidden>See an example</a>
       <div class="paper">
-        <div class="lines" aria-live="off"><h1 class="on">Did your customers get what they paid for?</h1><h1>Do your canceled customers still have access?</h1></div>
+        <div class="col"><div class="lines" aria-live="off"><h1 class="on">Did your customers get what they paid for?</h1><h1>Do your canceled customers still have access?</h1></div>
+        <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl">Find out</span><i class="sat" aria-hidden="true"></i></a></div>
         <div class="stage" id="stage"><div class="frame" id="frame"><div class="screen"><div class="inner" id="frameInner"></div></div><div class="glow" id="edge" aria-hidden="true"></div></div></div>
-        <a href="#" class="btn big orbit" id="findOut" data-screen="connect"><span class="lbl">Find out</span><i class="sat" aria-hidden="true"></i></a>
       </div>
+      <canvas class="fern" id="fern" aria-hidden="true"></canvas>
     </section>
     <section id="connect" hidden><div class="wrap">
       <p class="eyebrow">Step 1 of 2</p>
